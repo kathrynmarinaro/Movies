@@ -1,0 +1,27 @@
+# --- secrets -----------------------------------------------------------
+# Real credentials live here: the DB password, the admin password hash, the
+# TMDB API key and the cron token. config.example.php is the tracked template.
+config.php
+
+# --- cached posters ----------------------------------------------------
+# Downloaded from TMDB on first fetch and cached forever. These are fetched
+# data, not source — a fresh checkout re-fetches them.
+#
+# MANUALLY UPLOADED POSTERS ARE THE EXCEPTION. A movie TMDB doesn't have
+# carries a poster that exists nowhere else, and nothing can re-fetch it.
+# Back this directory up before wiping it.
+public/posters/*
+!public/posters/.gitkeep
+
+# --- agent worktrees ---------------------------------------------------
+# Claude Code creates a git worktree per parallel agent in here. They're live
+# working directories with their own branches, not source. Only worktrees/ is
+# ignored, so genuine project config under .claude/ stays tracked.
+.claude/worktrees/
+
+# --- deployment / local ------------------------------------------------
+# Bundles built for uploading to Hostinger
+*.zip
+
+.DS_Store
+*.log

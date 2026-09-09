@@ -1,0 +1,1867 @@
+/* ============ Design tokens (shared with the Workout Generator, Print Cost
+ *              and the Inspiration Gallery) ============
+ *
+ * Same palette and geometry as the sibling apps — this is the house system,
+ * not a per-app choice. Change a token here only if it's changing in all of
+ * them. Copied verbatim from the Workout Generator.
+ */
+:root {
+  /* SEMANTIC NAMES, unlike every sibling app, which calls these --teal.
+     DELEGATION-PLAN.md §2.11: this app may be renamed and re-skinned for a
+     public release, and a stylesheet full of `var(--teal)` makes that a
+     find-and-replace across a thousand lines instead of three values here.
+
+     The VALUES are still the house teal, so it looks like the rest of the
+     suite until somebody decides otherwise. */
+  --accent:      #41b7ab;
+  --accent-dark: #369a90; /* accessible against white for text */
+  --slate:     #515a60;
+  --bg:        #ffffff;
+  --border:    #dddddd;
+  --ink:       #222222;
+  --black:     #000000;
+  --accent-tint: #e8f6f4;
+  --error:     #c05252;
+
+  --surface:   #ffffff;
+  --text:      var(--slate);
+  --heading:   var(--slate);
+
+  --radius: 10px;
+  --tap: 48px;
+  --maxw: 620px;
+  --font: "Avenir Next", Avenir, "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Pin to light so iOS doesn't auto-darken inputs and scrollbars for people
+     whose phone is in dark mode. */
+  color-scheme: light;
+}
+
+/* Deliberately light-only, matching the siblings.
+ *
+ * NOTE FOR ANYONE PORTING MORE CSS FROM THE GALLERY: that app pins
+ * html,body { overflow:hidden; touch-action:none } because it's a full-bleed
+ * pannable WebGL canvas. Do NOT bring that here. Three of this app's screens
+ * are scrolling lists, and those two rules would make every row below the fold
+ * unreachable — and would kill the swipe gestures outright.
+ */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+
+[hidden] { display: none !important; }
+.hidden { display: none !important; }
+.muted { color: var(--slate); opacity: 0.7; font-weight: 400; }
+.hint { font-size: 0.82rem; color: var(--slate); opacity: 0.75; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ============ Layout ============ */
+
+/* The centred column. Bottom padding clears the fixed tab bar plus the
+   iPhone home-indicator inset. */
+.wrap {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 18px) 18px
+           calc(var(--safe-bottom) + var(--tap) + 34px);
+}
+
+/* Signature divider — a 2px teal rule under headings. */
+.screen-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 10px;
+  margin: 4px 0 20px;
+}
+h1 { font-size: 1.7rem; font-weight: 500; margin: 0; color: var(--heading); letter-spacing: 0.2px; }
+h2 { font-size: 1.1rem; font-weight: 600; margin: 26px 0 10px; color: var(--heading); }
+.rule { border: 0; border-top: 2px solid var(--accent); margin: 28px 0 18px; }
+
+.stack { display: grid; gap: 14px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* Heading row actions. Sits in the heading row rather than floating over the
+   page, so it can never overlap content. */
+.head-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* ============ Bottom tab bar ============ */
+
+.tabbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: var(--safe-bottom);
+  z-index: 20;
+}
+.tabbar a {
+  flex: 1;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: var(--slate);
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-top: 2px solid transparent;
+  margin-top: -1px;
+}
+.tabbar a.is-active { color: var(--accent-dark); border-top-color: var(--accent); }
+
+/* ============ Sheet (menus, pickers) ============
+ *
+ * Ported from the Inspiration Gallery, same markup and behaviour: a bottom
+ * sheet on a phone, a centred dialog once there's room. Bottom-anchored because
+ * that's where your thumb is — a menu that drops from the top corner it was
+ * tapped in is a desktop habit.
+ *
+ * The Grocery tab's category picker is expected to use this. */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.sheet-panel {
+  background: var(--bg);
+  width: 100%;
+  max-width: var(--maxw);
+  border-radius: 16px 16px 0 0;
+  display: grid;
+  gap: 2px;
+  padding: 16px 16px calc(20px + var(--safe-bottom));
+
+  /* The category sheet is ten rows tall and the archive-move sheet could grow.
+     Without this, a sheet taller than the viewport puts its last option — which
+     is always Cancel — permanently off-screen. */
+  max-height: 80vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (min-width: 620px) {
+  .sheet { align-items: center; }
+  .sheet-panel { border-radius: 16px; }
+}
+
+.sheet-panel button,
+.sheet-panel a {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--heading);
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+}
+.sheet-panel button:hover,
+.sheet-panel a:hover { border-color: var(--accent); color: var(--accent-dark); }
+.sheet-panel button.is-current {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+}
+.sheet-cancel {
+  justify-content: center;
+  color: var(--slate) !important;
+  margin-top: 8px;
+}
+
+/* ============ Fields ============ */
+
+/* margin-top rather than a gap on the parent: fields sit inside .row and
+   .stack as well as directly in a form, and only this reaches all three.
+   The first field in a group loses it, so a form does not start with a gap. */
+.field { display: flex; flex-direction: column; gap: 6px; margin-top: 22px; }
+.field:first-child, .row > .field { margin-top: 0; }
+.row { margin-top: 22px; }
+.field > span, .label { font-size: 0.95rem; font-weight: 400; color: var(--heading); }
+
+.field input, .field textarea, .field select, .input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  width: 100%;
+  appearance: none;
+}
+.field input, .field select, .input { min-height: var(--tap); padding: 0 14px; }
+.field textarea { resize: vertical; line-height: 1.5; }
+
+.field input:focus, .field textarea:focus, .field select:focus, .input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.field-err { font-size: 0.82rem; color: var(--error); min-height: 1em; }
+
+/* ============ Buttons ============ */
+
+/* These work on <a> as well as <button>. Cross-screen navigation would otherwise
+   need a <form method="get"> wrapper just to get a styled control, since an
+   anchor arrives underlined, inline, and not centred. */
+.btn-primary, .btn-secondary, .btn-danger {
+  min-height: var(--tap);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  padding: 0 18px;
+  font-weight: 600;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-dark); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-secondary, .btn-ghost {
+  min-height: var(--tap);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--heading);
+  border: 1px solid var(--border);
+  padding: 0 18px;
+  font-weight: 600;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-secondary:hover, .btn-ghost:hover { border-color: var(--accent); color: var(--accent-dark); }
+.btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-danger { background: var(--surface); color: var(--error); border-color: var(--error); }
+.btn-danger:hover { background: var(--error); color: #fff; }
+
+/* Underlined text action.
+ *
+ * The 48px minimum is unconditional. In a sibling it was inherited only from
+ * one container, so the same class rendered a 24px target everywhere else —
+ * half the minimum, on shipped screens, invisible unless measured. A tap target
+ * is a property of the control, not of where it happens to be sitting. */
+.link-btn, .tap-text {
+  background: none; border: 0; padding: 0;
+  color: var(--slate); font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+}
+.link-btn:hover, .tap-text:hover { color: var(--accent-dark); text-decoration-color: var(--accent); }
+.tap-text.danger { color: var(--error); }
+
+.icon-btn {
+  width: var(--tap);
+  height: var(--tap);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--heading);
+  padding: 0;
+}
+.icon-btn:hover { border-color: var(--accent); color: var(--accent-dark); }
+.icon-btn.is-danger { color: var(--error); border-color: var(--border); }
+.icon-btn.is-danger:hover { border-color: var(--error); background: var(--error); color: #fff; }
+.icon-btn svg {
+  width: 22px; height: 22px;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ============ Login ============ */
+
+.login-body { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+.login-card { width: 100%; max-width: 340px; }
+.login-title {
+  font-size: 1.7rem;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: var(--heading);
+  margin: 0 0 10px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--accent);
+}
+.login-form { display: grid; gap: 14px; margin-top: 20px; }
+.login-form .btn-primary { width: 100%; }
+.login-error { margin: 0; color: var(--error); font-size: 0.85rem; }
+
+/* ============ Cards, pills, empty states ============ */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 14px;
+}
+.card + .card { margin-top: 10px; }
+
+/* The Want to Buy intro is the one card in the app holding prose rather than
+ * controls, and .card's 14px is a list-row measurement — it reads as cramped
+ * around two paragraphs of running text. More room, and a little air between
+ * the paragraphs, since the second one is a separate thought and not a
+ * continuation of the first. */
+#wanttobuy-intro { padding: 18px 18px 20px; }
+#wanttobuy-intro p { margin: 0; }
+#wanttobuy-intro p + p { margin-top: 12px; }
+
+.pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill.is-plain { background: transparent; border: 1px solid var(--border); color: var(--slate); }
+
+.empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--slate);
+  opacity: 0.7;
+}
+
+/* =====================================================================
+ * ============ Grocery-specific components ============
+ *
+ * Everything below is new to this app. It is written against the JS modules in
+ * this directory — the class names here and the ones in swipe.js,
+ * inline-edit.js and reorder.js are one contract, catalogued in
+ * docs/CONTRACTS.md §5. Changing a name means changing both.
+ * ===================================================================== */
+
+/* ============ Quick-add composer ============
+ *
+ * Sits directly under .screen-head on all three tabs: a text field and an Add
+ * button, side by side.
+ *
+ *   <form class="composer">
+ *     <input class="composer-input" type="text" ...>
+ *     <button class="composer-add" type="submit">Add</button>
+ *   </form>
+ *
+ * A real <form> rather than a div plus a click handler, so Enter on a phone
+ * keyboard submits without any JS at all — and so the whole thing still works
+ * on a full page POST if a tab module wants to skip fetch entirely.
+ */
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+
+/* A composer at the TOP of a screen needs no space above it — the heading rule
+ * already provides it. One that follows content does, and the Shopping tab's
+ * "Add a store" box sits directly under the store list, where margin-bottom
+ * alone left the input butted against the last row's border with the two
+ * rounded corners touching. Scoped to the adjacency so the leading composer on
+ * every tab is untouched. */
+.list + .composer,
+.card + .composer,
+.accordion + .composer { margin-top: 14px; }
+.composer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap);
+  /* 16px EXACTLY, never smaller. Below 16px iOS zooms the page on focus and
+     never zooms back out, which on a list you're adding six things to means
+     re-pinching after every item. */
+  font-size: 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 14px;
+  appearance: none;
+}
+.composer-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+/* Overrides .btn-primary's width:100% — in a flex row the button sizes to its
+   label, and "Add" is two thumbs wide, not a full bar. */
+.composer-add {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: var(--tap);
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.composer-add:hover { background: var(--accent-dark); }
+.composer-add:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ============ The list row primitive ============
+ *
+ * The shared swipeable row used by all three tabs. One structure, three
+ * meanings:
+ *
+ *   <ul class="list">
+ *     <li class="list-row" data-id="12">
+ *       <div class="row-slide">
+ *         <span class="drag-handle">…</span>      optional, reorder.js
+ *         <button class="row-check"></button>     optional, the checkbox
+ *         <span class="row-text">Milk (oat)</span>
+ *         <button class="row-cat pill">Dairy &amp; Eggs</button>   optional
+ *       </div>
+ *     </li>
+ *   </ul>
+ *
+ * TWO LAYERS, and both are load-bearing. The <li> is the fixed frame: it holds
+ * the delete affordance, the borders and the collapse animation. .row-slide is
+ * the only thing that moves under the finger. Translating the <li> itself would
+ * drag its own border and its delete label along with it, so there would be
+ * nothing revealed underneath.
+ */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* Clips the sliding layer at the rounded corners, and stops a row mid-swipe
+     painting over the group heading above it. */
+  overflow: hidden;
+}
+.list:empty { display: none; }
+
+.list-row {
+  position: relative;
+  background: var(--error);   /* only ever visible behind a swiped row */
+
+  /* Vertical panning stays with the browser; horizontal movement comes to
+     swipe.js as pointer events. This one declaration is what stops the swipe
+     handler from hijacking the page scroll, and it does it in the compositor
+     rather than in JS — no amount of preventDefault() discipline is as
+     reliable. Do not change it to `none`: that kills scrolling over the list.
+     Do not remove it: without it the browser may claim the horizontal gesture
+     as an overscroll/back-navigation before swipe.js ever sees a move. */
+  touch-action: pan-y;
+
+  /* The collapse animation's starting point. A fixed max-height rather than
+     `height: auto` because auto is not animatable; 300px is far above any real
+     row and is never reached, so it has no visual effect until .is-removing
+     drops it to zero. */
+  max-height: 300px;
+  transition: max-height 0.18s ease, opacity 0.18s ease;
+}
+.list-row + .list-row .row-slide { border-top: 1px solid var(--border); }
+
+/* The delete affordance, revealed as the row slides left.
+ *
+ * A ::after on the frame rather than a real element: it is decoration, it is
+ * never tappable (the gesture is the control), and a real button here would be
+ * announced by a screen reader as a control that cannot be reached by keyboard. */
+.list-row::after {
+  content: "Delete";
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+
+  /* Bottom of an explicit three-layer stack: this label, then .row-slide over
+     it, then the grace bar over that. All three are positioned inside the same
+     stacking context, and with z-index:auto the painting order is tree order —
+     which puts generated ::after content ABOVE the element's own children. The
+     label therefore sat on top of the row at rest, showing through wherever the
+     row had content to collide with, most visibly across the category pill. It
+     is only ever meant to be seen through the gap a swiped row leaves behind. */
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* The desktop way out of a touch gesture.
+ *
+ * Swipe-to-delete is the whole interaction on a phone and does not exist on a
+ * desktop: there is no flick with a mouse, and the row is otherwise undeletable
+ * there. This is that backup — the same delete, the same undo snackbar, reached
+ * by a button instead of a thumb.
+ *
+ * Hidden by default and shown only to a fine pointer, so the phone keeps the
+ * clean row it was designed around and does not grow a 48px target sitting
+ * right beside the category pill, waiting to be fat-fingered. Delete it from
+ * the media query to show it everywhere. */
+.row-del {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--slate);
+  opacity: 0.45;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.row-del svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (hover: hover) and (pointer: fine) {
+  .row-del { display: flex; }
+  .row-del:hover, .row-del:focus-visible {
+    opacity: 1;
+    color: var(--error);
+    background: #f7ecec;
+  }
+}
+
+/* The moving layer. Everything visible lives in here. */
+.row-slide {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 8px 14px;
+  background: var(--surface);
+  transform: translateX(var(--swipe-dx, 0px));
+  transition: transform 0.18s ease;
+
+  /* Middle layer: covers the Delete label until the swipe slides this aside.
+     The opaque background is half of that job and this is the other half —
+     without it the label paints over this element's own children. */
+  z-index: 1;
+}
+
+/* Finger-tracking: no transition, or every frame lags 180ms behind the thumb.
+   swipe.js adds .is-swiping on gesture lock and removes it on release, which is
+   what makes the spring-back animate while the drag does not. */
+.list-row.is-swiping .row-slide {
+  transition: none;
+  will-change: transform;
+}
+
+/* Past the delete threshold. The label goes bold-white on full red so you can
+   see the commit point without watching the pixel offset — the gesture is
+   otherwise entirely un-discoverable in its most important respect, which is
+   how far is far enough. */
+.list-row.is-armed::after { font-size: 0.95rem; }
+.list-row.is-armed .row-slide { box-shadow: -6px 0 12px -6px rgba(0, 0, 0, 0.25); }
+
+/* Collapsing out after a delete. The row stays in the DOM through the undo
+   window so that Undo restores this exact element with its listeners intact;
+   this is what it looks like while it is gone. */
+.list-row.is-removing {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Checked / crossed out.
+ *
+ * ONE class for two tabs. Grocery uses it for a checked item during its grace
+ * window; Shopping uses it for a permanently crossed-out line. They look the
+ * same because they mean the same thing to the eye — done, but still here. */
+.list-row.is-checked .row-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  color: var(--slate);
+  opacity: 0.55;
+}
+.list-row.is-checked .row-cat { opacity: 0.5; }
+
+/* The grace window: checked, and counting down to disappearing.
+ *
+ * The countdown is a real bar rather than a fade, because a fade reads as "this
+ * is loading" and the whole point is that you have a few seconds to change your
+ * mind. Duration comes from --grace-ms, set by the tab module from
+ * cfg('grocery.grace_seconds') — so the bar and the server-side sweep are
+ * driven by the same number and can't drift apart.
+ *
+ * The row is still visible and still swipeable while this runs. */
+.list-row.is-grace { background: var(--accent-tint); }
+.list-row.is-grace .row-slide { background: var(--accent-tint); }
+.list-row.is-grace::before {
+  content: "";
+  position: absolute;
+  left: 0; bottom: 0;
+  height: 2px;
+  background: var(--accent);
+
+  /* Top layer, above .row-slide's 1. This bar is drawn across the bottom edge
+     of the row it is counting down, so it has to sit over the sliding layer
+     rather than under it — at z-index 1 it would tie with .row-slide and lose
+     on tree order, because a ::before paints before the element's children. */
+  z-index: 2;
+  animation: grace-drain var(--grace-ms, 3000ms) linear forwards;
+}
+@keyframes grace-drain {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+/* Someone who has asked the OS to stop animating things still needs to know the
+   row is on its way out; they get the tint and the strike-through, without a
+   bar sliding across their screen. */
+@media (prefers-reduced-motion: reduce) {
+  .list-row.is-grace::before { animation: none; width: 100%; opacity: 0.4; }
+  .row-slide, .list-row { transition: none; }
+}
+
+/* ---- row contents ---- */
+
+/* The text. Tapping it opens the inline editor (inline-edit.js), so it needs a
+   full-height hit area — a single line of text in a 48px row is a 22px target
+   otherwise. It is NOT a <button>: it has to be selectable text, and a button
+   that contains an editable input is invalid. */
+.row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  color: var(--heading);
+  /* These are freeform phrases up to 500 characters on two of the three tabs.
+     Wrapping is correct; truncating would hide the half of the sentence that
+     says which shop. */
+  overflow-wrap: anywhere;
+}
+.row-text:empty::before {
+  /* A row whose name somehow arrived empty still has to be tappable, or it is
+     a row you can neither read, edit nor swipe. Fail soft. */
+  content: "(untitled)";
+  color: var(--slate);
+  opacity: 0.5;
+}
+
+/* The in-place editor: an input that replaces .row-text's text and matches its
+   metrics closely enough that the row doesn't jump when it appears. */
+.row-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  /* 16px again — see .composer-input. */
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--heading);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin: -3px 0;
+  appearance: none;
+}
+.row-edit:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* While editing, the row must not slide or drag out from under the caret. */
+.list-row.is-editing { touch-action: auto; }
+.list-row.is-editing .row-slide { transform: none; }
+
+/* Secondary line under the row text — Want to Buy's notes, a store name, a
+   date. Put it inside .row-text's flex sibling slot, not inside .row-text
+   itself, or the inline editor will eat it. */
+.row-sub {
+  display: block;
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--slate);
+  opacity: 0.75;
+}
+.row-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row-body .row-text { align-self: auto; }
+
+/* An outbound link on a row. Keeps its own 48px target so that tapping the link
+   and tapping the text to edit are two different gestures rather than a
+   coin flip. */
+.row-link {
+  flex: none;
+  width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-dark);
+  text-decoration: none;
+}
+.row-link svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* The checkbox. A real <button aria-pressed> rather than <input type=checkbox>:
+   the tick has to be 48px and centred in a circle, and restyling a native
+   checkbox to that on iOS means hiding it and drawing one anyway. */
+.row-check {
+  flex: none;
+  width: 26px; height: 26px;
+  /* The visual circle is 26px but the tap target is the full row height plus
+     generous side padding, via the negative margin. 26px alone is half the
+     minimum and this is the single most-tapped control in the app. */
+  margin: -11px -4px -11px -4px;
+  padding: 11px 4px;
+  box-sizing: content-box;
+  background: none;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.row-check::before {
+  content: "";
+  width: 24px; height: 24px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.row-check[aria-pressed="true"]::before {
+  border-color: var(--accent);
+  background: var(--accent);
+  /* The tick is drawn rather than typed: a ✓ glyph renders at a different
+     weight and baseline on every platform, and inside a 24px circle that is the
+     difference between centred and not. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E");
+  background-size: 16px 16px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.row-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 50%; }
+
+/* The category pill, on the right of a Grocery row.
+ *
+ * This is a CONTROL, not a label, and it exists because tapping the text edits
+ * the text (inline-edit.js). Re-categorizing therefore needs somewhere else to
+ * tap, and this is it — the pill opens the category sheet. That is the whole
+ * reason it is a <button>. */
+.row-cat {
+  flex: none;
+  border: 0;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Well under 48px on purpose, and the one deliberate exception to the tap
+     minimum. Full height here would make the pill the visual centre of every
+     row, and the row already has two full-size targets flanking it. It sits in
+     the middle of an otherwise dead zone, so the practical target is larger
+     than the paint. */
+  min-height: 30px;
+  align-self: center;
+}
+.row-cat:hover { background: var(--accent); color: #fff; }
+
+/* The drag handle for reorder.js.
+ *
+ * An EXPLICIT handle, not long-press-to-drag. Long press on a touch list fights
+ * the scroll: the browser has already started panning by the time the press
+ * threshold fires, so the drag either never starts or starts with the list
+ * moving under it. A handle is unambiguous from the first pixel.
+ *
+ * touch-action:none is the mirror of .list-row's pan-y — on this element and
+ * only this element, the browser hands us every direction. */
+.drag-handle {
+  flex: none;
+  width: 34px;
+  min-height: var(--tap);
+  margin: -8px 0 -8px -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--border);
+  cursor: grab;
+  touch-action: none;
+  /* A long-press on a handle otherwise pops the iOS text-selection magnifier
+     mid-drag. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.drag-handle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.drag-handle:hover { color: var(--slate); }
+
+/* The row currently under the finger. Lifted off the list so it reads as
+   picked up, and translated by --drag-dy which reorder.js sets. Note this
+   transform is on the <li>, while the swipe transform is on .row-slide — the
+   two gestures never fight over the same property. */
+.list-row.is-dragging {
+  z-index: 2;
+  transform: translateY(var(--drag-dy, 0px));
+  transition: none;
+}
+.list-row.is-dragging .row-slide {
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.35);
+  background: var(--surface);
+}
+/* Everything else stops animating its own position while a drag is live, or the
+   rows swapping places chase the finger with a 180ms lag. */
+.list.is-reordering .list-row:not(.is-dragging) .row-slide { transition: transform 0.12s ease; }
+
+/* ============ Category groups (Grocery tab) ============
+ *
+ * Also the store groups on Shopping — same structure, different heading text.
+ * Kept generic rather than having a `cat-` set and a near-identical `store-`
+ * set, because they are visually the same thing and a second copy is a second
+ * thing to keep in sync.
+ */
+.cat-group { margin: 0 0 18px; }
+.cat-group:last-child { margin-bottom: 0; }
+
+.cat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 0 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+  opacity: 0.75;
+}
+/* Sticky so the heading stays with its rows while you scroll a long list mid-
+   shop and you never lose track of which aisle you are reading. Not on the
+   Shopping tab's headings by default — add .is-sticky where you want it. */
+.cat-head.is-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  padding: 6px 2px;
+  margin-bottom: 4px;
+}
+.cat-count { font-weight: 600; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+/* A group heading that is itself a control (rename a store, collapse a
+   category). Strips the button chrome and keeps the typography. */
+.cat-head button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  min-height: 32px;
+}
+.cat-head button:hover { color: var(--accent-dark); }
+
+/* ============ Accordion (Want to Buy archive) ============
+ *
+ * <details>, not a div plus a click handler. It opens and closes with no JS at
+ * all, it is keyboard operable for free, and the browser gets the accessibility
+ * semantics right without a single aria attribute — which matters because the
+ * archive is 43 rows the author will open twice a year and nobody will ever
+ * test with a screen reader.
+ */
+.accordion {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 22px;
+  overflow: hidden;
+}
+.accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  background: var(--surface);
+  color: var(--heading);
+  font-weight: 600;
+  cursor: pointer;
+  /* Kills the native disclosure triangle so the ::before below can draw one
+     that actually rotates. Safari needs the -webkit- form. */
+  list-style: none;
+}
+.accordion-head::-webkit-details-marker { display: none; }
+.accordion-head::before {
+  content: "";
+  flex: none;
+  width: 8px; height: 8px;
+  border-right: 2px solid var(--slate);
+  border-bottom: 2px solid var(--slate);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  margin-left: 2px;
+}
+.accordion[open] > .accordion-head::before { transform: rotate(45deg); }
+.accordion-head:hover { color: var(--accent-dark); }
+.accordion-count {
+  margin-left: auto;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--slate);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.accordion-body { padding: 4px 12px 12px; border-top: 1px solid var(--border); }
+/* Nested lists inside the accordion lose their own outer border — two nested
+   rounded boxes with a 12px gutter between them reads as a bug. */
+.accordion-body .list { border: 0; border-radius: 0; }
+
+/* ============ Snackbar (undo after delete) ============
+ *
+ * Created and removed by swipe.js; there is no empty host element sitting in
+ * the page. Anchored above the tab bar rather than at the bottom of the
+ * viewport, because at the bottom it covers the tab bar — and the tab bar is
+ * exactly where a thumb goes to escape a mistake.
+ */
+.snackbar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--safe-bottom) + var(--tap) + 12px);
+  z-index: 40;
+  max-width: calc(var(--maxw) - 24px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--tap);
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  animation: snackbar-in 0.16s ease-out;
+}
+@keyframes snackbar-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.snackbar-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+  /* One line. A deleted 500-character shopping phrase would otherwise turn the
+     snackbar into a paragraph sitting over the list. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.snackbar-action {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.snackbar-action:hover { border-color: #fff; background: rgba(255, 255, 255, 0.12); }
+.snackbar.is-error { background: var(--error); }
+@media (prefers-reduced-motion: reduce) {
+  .snackbar { animation: none; }
+}
+
+/* ============================================================================
+   SHIREWATCH COMPONENTS
+   ----------------------------------------------------------------------------
+   Everything above this line is the house system, ported from Grocery and
+   shared with the Inspiration Gallery, Book Tracker and Print Cost. Fix a bug
+   up there and it should land in the siblings too.
+
+   Everything below is new to this app. FOUNDATION OWNS IT AND IT IS COMPLETE:
+   write markup against these classes, don't add a <style> block, and don't
+   edit this file. Need a component that isn't here? Report it.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- severity
+
+   Four levels, matching issues.severity 1-4. NULL renders NOTHING at all —
+   there is no .sev-0, deliberately, because unset and lowest are different
+   facts (schema.sql) and a grey "Watch" pill on every unset issue would be a
+   lie that looks like data.
+
+   Colour is never the only signal: each pill carries its own word. */
+.sev {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.sev-1 { background: #eef1f2; color: #4a5459; }              /* Watch  */
+.sev-2 { background: #e7f0f8; color: #2f5d84; }              /* Minor  */
+.sev-3 { background: #fdf0e2; color: #8a5311; }              /* Major  */
+.sev-4 { background: #fbe6e6; color: #9c2f2f; }              /* Urgent */
+
+/* A row whose date has passed. Used by the dashboard and the timeline. */
+.is-overdue { color: var(--error); font-weight: 600; }
+
+/* ------------------------------------------------------------------- stars
+
+   Rating display, 1-5, for a service record or a vendor average. Unrated
+   renders nothing — same rule as severity.
+
+   The average is allowed a half star; a per-job rating never is. .star.is-half
+   is what draws it, using a clipped overlay rather than a half-star glyph,
+   because the two glyphs do not align at the same optical weight. */
+.stars { display: inline-flex; gap: 1px; vertical-align: -2px; }
+.star { position: relative; width: 15px; height: 15px; color: #d8dcde; }
+.star svg { width: 100%; height: 100%; display: block; fill: currentColor; }
+.star.is-on { color: #e0a531; }
+.star.is-half { color: #d8dcde; }
+.star.is-half::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  overflow: hidden;
+  background: currentColor;
+  color: #e0a531;
+  -webkit-mask: var(--star-mask) left center / 15px 15px no-repeat;
+  mask: var(--star-mask) left center / 15px 15px no-repeat;
+}
+.stars-num { font-size: 0.8rem; color: var(--slate); margin-left: 5px; }
+
+/* An overridden vendor rating shows the average BESIDE it rather than instead
+   of it — an override that hides what it overrode is how you forget you set
+   one (schema.sql, vendors.rating_override). */
+.stars-note { font-size: 0.78rem; color: var(--slate); opacity: 0.8; }
+
+/* -------------------------------------------------------------------- tags
+
+   Chips. The read-only form is a span; the filter form is a button that
+   toggles .is-on. Both are 32px tall rather than the 48px --tap minimum,
+   because they appear in dense rows of six or more — the tap target is
+   enlarged by the padding on the ROW, not by making every chip a button the
+   size of a fingertip. A chip is never the only way to reach anything. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--slate);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.chip.is-on {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+/* Location vs. system, distinguishable at a glance without reading. Locations
+   are the ones you scan for, so they get the filled treatment. */
+.chip.is-location { background: #f4f6f7; }
+.chip.is-static { cursor: default; }
+
+/* Remove control inside an editable chip. */
+.chip-x {
+  margin-left: 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+/* The tag PICKER: a chip row that opens the .sheet. Used by every editor. */
+.tagfield { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tagfield-add {
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--slate);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.tagfield-add:hover { border-color: var(--accent); color: var(--accent-dark); }
+
+/* Group heading inside the picker sheet — "Rooms & areas", "Systems". */
+.sheet-group {
+  padding: 14px 4px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+  opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------- timeline
+
+   The dashboard's forward stream (DELEGATION-PLAN.md §2.13): one chronological
+   list of maintenance and issue follow-ups, scrolling into the future.
+
+   Dates are a STICKY sub-heading rather than a column, because a phone is not
+   wide enough for a gutter of dates beside the content and still leave room
+   for a task title. The rail on the left is what makes it read as a timeline
+   rather than as a plain list. */
+.timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--border);
+}
+.timeline-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 18px 0 8px;
+  padding: 4px 0 4px 30px;
+  background: var(--bg);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+.timeline-head:first-child { margin-top: 0; }
+.timeline-item {
+  position: relative;
+  padding: 10px 0 10px 30px;
+  min-height: var(--tap);
+}
+/* The node. Filled for maintenance, hollow for a log-entry follow-up — the two
+   kinds are combined in this stream by design, so the shape is what tells you
+   which you are looking at without reading the label. */
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 17px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--bg);
+}
+.timeline-item.is-entry::before { background: var(--bg); border: 2px solid var(--accent); }
+.timeline-item.is-projected::before { background: var(--border); }
+
+/* A SERVICE UPDATE ON AN ENTRY'S OWN TIMELINE. Money changed hands here, so
+   the node is solid and darker than the notes around it: scrolling a long
+   entry, the visits are the rows you are looking for. Not a different list —
+   the merge exists so a repair and the observations around it read as one
+   story — just a heavier beat in the same one. */
+.timeline-item.is-service::before { background: var(--accent-dark); }
+
+.timeline-title { display: block; color: var(--ink); font-weight: 600; text-decoration: none; }
+.timeline-sub { display: block; font-size: 0.82rem; color: var(--slate); margin-top: 2px; }
+
+/* A projected occurrence is a PREDICTION, not a stored row (§2.13). It is
+   dimmed so the difference is visible: the app has not promised you this date,
+   it has calculated it, and completing the task early moves everything after
+   it. */
+.timeline-item.is-projected .timeline-title { font-weight: 500; color: var(--slate); }
+
+/* Infinite-scroll sentinel and its spinner. */
+.timeline-more { padding: 20px 0 8px 30px; color: var(--slate); font-size: 0.85rem; }
+
+/* ------------------------------------------------------------ action block
+
+   "Needs action now", the accordion at the top of the dashboard. Uses the
+   house .accordion; this only adds the count badge treatment and the two
+   groups inside it.
+
+   THE TWO GROUPS ARE THE BRIEF'S ISSUES-VS-MAINTENANCE SEPARATION, kept where
+   it earns its place. Deciding what to do this morning, "call a plumber" and
+   "change a filter" are different kinds of thing. Below in the timeline they
+   are combined, because there the organising principle is when. */
+.action-count {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 7px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: var(--error);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+.action-count.is-clear { background: var(--accent); }
+.action-group + .action-group { margin-top: 18px; }
+
+/* ----------------------------------------------------------------- gallery
+
+   Photo grids. Two shapes, one component:
+
+   .gallery          a service record's batch — even squares, order irrelevant
+   .gallery.is-strip a horizontal scroller for an issue timeline entry
+
+   Aspect is locked square so a portrait phone photo and a landscape one line
+   up; the full frame is in the lightbox. */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.gallery.is-strip {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.gallery.is-strip .gallery-item { flex: 0 0 42%; scroll-snap-align: start; }
+
+.gallery-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #f2f4f5;
+}
+.gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* A photo still in the queue, or one that failed. NEVER an empty box: a grey
+   rectangle with no explanation reads as a broken app, and the whole point of
+   the queue is that this state is normal and brief. */
+.gallery-item.is-pending::after,
+.gallery-item.is-failed::after {
+  content: "Processing…";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--slate);
+  background: #f2f4f5;
+}
+.gallery-item.is-failed::after { content: "Couldn’t process"; color: var(--error); }
+
+/* Date caption over a timeline photo, so a strip of four reads as a sequence. */
+.gallery-date {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 8px 5px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------- documents
+
+   Invoices and warranties. A row, not a thumbnail: a PDF has no useful
+   preview at 96px, and the filename is the thing you are looking for. */
+.doclist { list-style: none; margin: 10px 0 0; padding: 0; }
+.doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 8px 0;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+}
+.doclist li:last-child .doc { border-bottom: 0; }
+.doc svg { flex: 0 0 20px; width: 20px; height: 20px; stroke: var(--slate); fill: none; stroke-width: 1.6; }
+.doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-size { font-size: 0.78rem; color: var(--slate); }
+
+/* -------------------------------------------------------------- meta rows
+
+   Label/value pairs on a detail screen: vendor, cost, date, linked issue.
+   A definition list, because that is what it is. */
+.meta { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
+.meta dt { font-size: 0.8rem; color: var(--slate); }
+.meta dd { margin: 0; color: var(--ink); }
+.meta dd a { color: var(--accent-dark); }
+
+/* --------------------------------------------------------------- filterbar
+
+   Sits under the screen heading on the list screens. Scrolls horizontally
+   rather than wrapping to three rows on a phone — a filter row that grows
+   taller as you add tags pushes the list itself off the first screen. */
+.filterbar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin: 0 0 14px;
+  padding-bottom: 2px;
+}
+.filterbar::-webkit-scrollbar { display: none; }
+.filterbar .chip { flex: 0 0 auto; }
+
+/* ------------------------------------------------------------------- toast
+
+   Transient confirmation, distinct from .snackbar: a snackbar carries an
+   ACTION (Undo) and owns a timeout you can beat; a toast is a statement with
+   nothing to do about it. Ported from the Inspiration Gallery. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tap) + 20px + var(--safe-bottom));
+  transform: translate(-50%, 12px);
+  max-width: min(90vw, 420px);
+  padding: 11px 16px;
+  border-radius: var(--radius);
+  background: #2b3134;
+  color: #fff;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 60;
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+/* -------------------------------------------------------------- lightbox
+
+   Full-screen photo viewer (assets/lightbox.js). The galleries render 96px
+   squares and this app is about comparing one photo of a crack with a later
+   photo of the same crack, so tapping has to open something big.
+
+   Fixed and above everything, including the tab bar — this is the one overlay
+   that genuinely wants the whole screen, and a tab bar visible under a photo
+   invites a tap that loses your place in the set. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #14171899;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  /* The module pages on horizontal swipe, so the browser must not claim the
+     gesture as a pan first. */
+  touch-action: none;
+}
+
+.lightbox-img {
+  max-width: 100%;
+  /* Leaves room for the bar without overlapping it, and for the notch. */
+  max-height: calc(100% - 132px - var(--safe-bottom));
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.lightbox-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px calc(14px + var(--safe-bottom));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  color: #fff;
+  font-size: 0.85rem;
+}
+.lightbox-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.lightbox-text strong { font-weight: 600; }
+.lightbox-text span { opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The original is one tap away and LABELLED. The viewer shows the 1600px copy
+   because paging a timeline at full resolution is tens of megabytes over a
+   phone connection — but "full resolution" is the thing you want in front of
+   an adjuster, so it must be reachable and it must say so. */
+.lightbox-full {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lightbox-count { flex: 0 0 auto; opacity: 0.6; font-variant-numeric: tabular-nums; }
+
+.lightbox-close,
+.lightbox-nav {
+  position: absolute;
+  width: var(--tap);
+  height: var(--tap);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.lightbox-close { top: calc(12px + var(--safe-top)); right: 12px; }
+.lightbox-nav { top: 50%; transform: translateY(-50%); font-size: 2rem; }
+.lightbox-nav.is-prev { left: 8px; }
+.lightbox-nav.is-next { right: 8px; }
+
+/* Below 480px the arrows sit under the thumb and over the photo, and swiping
+   is the gesture anyone actually uses. Keep them for keyboard and mouse, out
+   of the way on a phone. */
+@media (max-width: 480px) {
+  .lightbox-nav { display: none; }
+}
+
+/* --------------------------------------------------------- upload progress
+
+   The queue pill. Shown while api/worker.php drains, hidden otherwise.
+   Sits above the tab bar rather than over it — the app stays usable while
+   photos process, which is the entire point of not resizing inline. */
+.queue-pill {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--tap) + 16px + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #2b3134;
+  color: #fff;
+  font-size: 0.85rem;
+  z-index: 55;
+}
+.queue-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: queue-spin 0.7s linear infinite;
+}
+@keyframes queue-spin { to { transform: rotate(360deg); } }
+
+/* Respect a reduced-motion preference: the pill still says what it is doing,
+   it just stops spinning. */
+@media (prefers-reduced-motion: reduce) {
+  .queue-spinner { animation: none; }
+}
+
+/* ====================================================================
+   ROUND 2 — filter groups, the FAB, row links
+   ==================================================================== */
+
+/* ------------------------------------------------------- filter groups
+
+   Replaces the single horizontally-scrolling .filterbar on the list
+   screens. Two collapsible groups (Rooms, Systems) whose chips WRAP, so
+   you can see a whole vocabulary at once instead of swiping through it.
+
+   CAPPED AND SCROLLED INTERNALLY. Rooms has two dozen entries; without a
+   ceiling, opening it pushes the list itself off the first screen, which
+   defeats the point of filtering. */
+.filters { margin: 0 0 16px; }
+
+.filter-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.filter-group + .filter-group { margin-top: 8px; }
+
+.filter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--heading);
+  cursor: pointer;
+  list-style: none;
+}
+.filter-head::-webkit-details-marker { display: none; }
+
+/* The disclosure caret, drawn rather than a glyph so it rotates smoothly
+   and matches at any font size. */
+.filter-head::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--slate);
+  border-bottom: 2px solid var(--slate);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+.filter-group[open] > .filter-head::before { transform: rotate(45deg); }
+
+/* How many filters are on in THIS group. Only rendered when non-zero —
+   a "0" badge on every heading is noise that teaches you to ignore the
+   place where the real number appears. */
+.filter-count {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.filter-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px 12px;
+  max-height: 38vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* --------------------------------------------------------------- FAB
+
+   The floating add button, matching the Inspiration Gallery's .add-btn.
+   Replaces the full-width "Add a task" button that sat at the bottom of
+   the list and moved further away the more you had.
+
+   Clears the tab bar and the home indicator. z-index below .sheet and
+   .lightbox so it never floats over an open dialog. */
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--tap) + 18px + var(--safe-bottom));
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  z-index: 40;
+  text-decoration: none;
+}
+.fab:hover, .fab:focus { background: var(--accent-dark); }
+.fab svg {
+  width: 26px;
+  height: 26px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  fill: none;
+}
+
+/* The last row of a list needs clearance, or the FAB covers it. */
+.list:last-of-type, .cat-group:last-of-type { margin-bottom: 76px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-head::before { transition: none; }
+}
+
+/* --------------------------------------------------- rows as links
+
+   A row's body is an <a>, and without this it inherits the browser's blue
+   underline — which reads as a web page from 1998 rather than as a list
+   you tap. The whole row is the target; the pencil is an affordance, not
+   a second link. */
+a.row-body,
+a.row-body:visited { color: var(--ink); text-decoration: none; }
+a.row-body:hover .row-text { color: var(--accent-dark); }
+a.row-body .row-sub { color: var(--slate); }
+
+/* The edit affordance. Not focusable and hidden from screen readers: it
+   is a picture of what the row already does, and a second tab stop that
+   goes exactly where the first one goes is noise in a keyboard walk. */
+.row-edit {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--border);
+}
+.row-edit svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.list-row:hover .row-edit { color: var(--slate); }
+
+/* ------------------------------------------------------ section titles
+
+   "Coming up" and friends. .cat-head is the small uppercase label used
+   inside a section; this is the heading OF a section, and the two were
+   being asked to do the same job at different weights. */
+.section-title {
+  margin: 26px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--heading);
+}
+.section-title:first-child { margin-top: 0; }
+
+/* The needs-action accordion is a block of its own, not another row in
+   the flow — it needs air under it before the timeline starts. */
+#needs-action { margin-bottom: 30px; }
+
+
+/* ============================================================================
+ * MOVIES — the poster grid
+ * ----------------------------------------------------------------------------
+ * Everything above this line is the house system, ported verbatim from
+ * Shirewatch. This block is the only thing this app adds, and it is here
+ * because none of the siblings has a poster grid: Shirewatch's .gallery is a
+ * square photo grid with captions, and Book Tracker's grid lives in a
+ * stylesheet built on the older --teal tokens.
+ *
+ * NAMED .poster-*, NOT .card-*, DELIBERATELY. Shirewatch's stylesheet already
+ * defines .card as a bordered content block with padding and a background, and
+ * three screens' worth of markup above depends on it. Book Tracker's .card is a
+ * poster tile — a completely different component wearing the same name.
+ * Redefining it here would silently restyle every ported .card in the file,
+ * and the damage would show up on whichever screen nobody opened that day.
+ * ========================================================================== */
+
+.poster-grid {
+  display: grid;
+  /* 96px minimum puts three across on a phone and more on a tablet without a
+     breakpoint. Poster art is legible at this size in a way a book spine
+     isn't, so it does not need to go wider. */
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 16px 12px;
+  margin: 0 0 22px;
+}
+
+.poster-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-decoration: none;
+  color: inherit;
+  /* The whole tile is the tap target, and a poster is already far over 48px
+     tall, so no min-height is needed. */
+}
+.poster-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
+.poster-art {
+  position: relative;
+  display: block;
+  /* 2:3 is the poster aspect TMDB serves at every size. Fixing it here rather
+     than letting the image set its own height is what keeps the grid rows
+     aligned when one movie's art is missing. */
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--accent-tint);
+}
+
+.poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A movie with no poster is normal, not broken — TMDB doesn't have art for
+   everything, a poster that comes back too small is rejected rather than shown
+   blurry, and a manually added movie may never get one. All three land here.
+ *
+ * The placeholder CARRIES THE TITLE. At grid size an untitled coloured box is
+ * unidentifiable, and these are exactly the entries most likely to need
+ * attention. */
+.poster-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: var(--accent);
+  color: #fff;
+}
+.poster-none span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  /* Clamp rather than overflow: a long title must not push the box out of
+     shape and break the grid rhythm. */
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.poster-title {
+  font-size: 0.8rem;
+  line-height: 1.25;
+  color: var(--heading);
+  font-weight: 500;
+}
+
+.poster-sub {
+  font-size: 0.74rem;
+  line-height: 1.25;
+  color: var(--slate);
+  opacity: 0.8;
+}
+
+/* The countdown on a Coming Soon tile. Reads as data, not decoration, so it
+   sits under the title in the same slot the year uses on a watched tile. */
+.poster-countdown {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+/* Already released and still sitting on the Coming Soon list. Not an error
+   state — it is the pile the list exists to surface — but it should not read
+   as "coming soon" either. */
+.poster-countdown.is-out { color: var(--error); }
+
+/* The rating under a watched poster. .stars above is sized for a detail
+   screen; at grid width five stars need to be smaller or they wrap. */
+.poster-card .stars { font-size: 0.72rem; letter-spacing: 0.5px; }
+
+/* ---- the public collection page -------------------------------------------
+ * A separate document with no tab bar and no floating button, so it needs its
+ * own bottom clearance — .wrap's padding assumes the tab bar is there. */
+.wrap-public { padding-bottom: calc(28px + var(--safe-bottom)); }
+
+.public-head {
+  margin: 0 0 4px;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--heading);
+}
+.public-sub { margin: 0 0 22px; font-size: 0.85rem; color: var(--slate); opacity: 0.8; }
+
+/* ---- streaming availability ---------------------------------------------- */
+.providers { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
+.provider {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  color: var(--heading);
+}
+.provider img { width: 26px; height: 26px; border-radius: 5px; display: block; }
+
+/* ---- the add flow's search results ---------------------------------------
+ * Ported in spirit from Book Tracker: a list of tappable rows with a small
+ * poster thumbnail, and "Create new" pinned last as a visually distinct row. */
+.results { list-style: none; margin: 18px 0 0; padding: 0; }
+.result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: left;
+  color: inherit;
+  text-decoration: none;
+}
+.result + .result { margin-top: 8px; }
+.result:hover { border-color: var(--accent); }
+.result img, .result .result-thumb {
+  width: 40px;
+  height: 60px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--accent-tint);
+}
+.result-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.result-title { font-weight: 500; color: var(--heading); }
+.result-year { font-size: 0.8rem; color: var(--slate); opacity: 0.8; }
+
+/* "Create new" — dashed, so it reads as an escape hatch rather than as a
+   fifth search result. It is rendered immediately and never waits on the
+   network; it is useless if it appears a second late. */
+.result-new { border-style: dashed; justify-content: center; color: var(--accent-dark); font-weight: 500; }

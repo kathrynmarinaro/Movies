@@ -1,0 +1,95 @@
+# =====================================================================
+# Movies — document-root shim
+# ---------------------------------------------------------------------
+# Hostinger points the subdomain at THIS folder and won't let us move the
+# document root down into public/. So the whole app tree sits inside the
+# served area, which means without this file:
+#
+#   1. the domain root is a 403, because there's no index here; and
+#   2. lib/, config.php and schema.sql are all fetchable over HTTP.
+#      Anything not executed as PHP is served as plain text, so a .sql
+#      dump reads out in the browser and config.php is one PHP
+#      misconfiguration away from printing the database password AND the
+#      TMDB API key AND the cron token.
+#
+# This rewrites every request down into public/ and denies the things that
+# must never be served.
+#
+# BETTER OPTION IF IT EVER BECOMES AVAILABLE: if the host lets you set the
+# document root directly to .../Movies/public, do that instead and delete
+# this file. The private folders then sit genuinely outside the served tree
+# rather than being denied inside it. This is the fallback for when that
+# setting is locked, which is the usual case on shared hosting.
+#
+# THE FOLDER MUST BE CALLED public — NOT public_html. Rename it and the
+# site is a bare 404 with nothing in any log to explain it: Apache rewrites
+# into a directory that isn't there, so PHP never runs and never gets a
+# chance to complain.
+# =====================================================================
+
+DirectoryIndex index.php
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Send /public/... back to the clean URL so the app has ONE address.
+  #
+  # Matched on THE_REQUEST (the literal request line) because that is
+  # untouched by internal rewrites — testing REQUEST_URI here would match
+  # this rule's own output and loop.
+  RewriteCond %{THE_REQUEST} \s/+public/(\S*) [NC]
+  RewriteRule ^ /%1 [R=301,L]
+
+  # Loop guard. In .htaccess the rewrite engine re-runs after an internal
+  # rewrite, and REQUEST_URI still holds the ORIGINAL path on that pass —
+  # so a condition on it never goes false and the rewrite loops until
+  # Apache gives up. Testing the rule PATTERN is what actually terminates.
+  RewriteRule ^public/ - [L]
+
+  # Unconditional, deliberately. The idiomatic
+  #   RewriteCond %{REQUEST_FILENAME} !-f
+  # guard is actively HARMFUL here: config.php does exist, so that guard
+  # would serve it instead of rewriting it into a 404.
+  RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# mod_alias, not mod_rewrite — .git survives an FTP upload more often than
+# anyone expects, and a readable .git/config is a credential leak. The
+# FilesMatch rules below can't cover it: they match the final path segment,
+# so /.git/config looks like the innocuous filename "config".
+#
+# .well-known is excluded because Let's Encrypt renewal lives there and
+# blocking it silently breaks certificate renewal months later.
+RedirectMatch 404 ^/\.(?!well-known)
+
+<FilesMatch "^config\.php$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+<FilesMatch "\.(sql|md|txt|dist|csv|json|example\.php)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+<FilesMatch "^\.">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
