@@ -1,0 +1,21 @@
+# Posters are static image files only — never execute anything in here.
+#
+# This directory is the one place in the app that accepts bytes from outside:
+# TMDB downloads land here, and so does the manual poster upload for movies
+# TMDB doesn't have. lib/posters.php validates by CONTENT before writing and
+# takes the extension from the real image header rather than from the upload
+# name — but a directory that can never execute is the layer that holds even
+# if that validation is ever weakened.
+php_flag engine off
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+</IfModule>
+<FilesMatch "\.(php|phtml|phar|cgi|pl|py|sh|htaccess)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>

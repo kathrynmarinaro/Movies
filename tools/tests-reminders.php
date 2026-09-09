@@ -369,5 +369,59 @@ function tests_reminders(): void
         'an undated movie still gets a readable subject'
     );
 
+    tests_mailer_config();
+
     test_clear_hooks();
+}
+
+/**
+ * mailer_config_problem(), branch by branch.
+ *
+ * Tested directly because lib/mailer.php's test seam bypasses it — a fake
+ * transport replaces the whole transport, config check included. Without these
+ * assertions that check would ship completely unexercised, and it is the one
+ * guarding the failure nothing else in the app can detect.
+ */
+function tests_mailer_config(): void
+{
+    t_group('the SMTP config check');
+
+    $good = array(
+        'host' => 'smtp.gmail.com', 'user' => 'me@example.com', 'pass' => 'app-password',
+        'from_email' => 'me@example.com', 'to' => 'me@example.com',
+    );
+
+    $saved = $GLOBALS['config']['smtp'];
+
+    $with = static function (array $overrides) use ($good): ?string {
+        $GLOBALS['config']['smtp'] = array_merge($good, $overrides);
+        return mailer_config_problem();
+    };
+
+    t_is($with(array()), null, 'a complete config reports no problem');
+
+    t_ok(str_contains((string) $with(array('host' => '')), 'smtp.host'),
+        'an empty host is named');
+    t_ok(str_contains((string) $with(array('user' => 'CHANGE_ME')), 'smtp.user'),
+        'an unedited user placeholder is named');
+    t_ok(str_contains((string) $with(array('pass' => 'CHANGE_ME')), 'APP PASSWORD'),
+        'an unedited password says it must be an app password');
+    t_ok(str_contains((string) $with(array('to' => '')), 'nobody to send'),
+        'no recipient is named');
+
+    /* THE ONE THAT MATTERS. Everything above produces a visible error; this
+     * produces a successful-looking send and no email, and it is the single
+     * most common way this setup fails on Gmail. */
+    $mismatch = (string) $with(array('from_email' => 'other@example.com'));
+    t_ok(str_contains($mismatch, 'does not match'),
+        'a from_email that differs from user is refused');
+    t_ok(str_contains($mismatch, 'silent'),
+        'and the message explains that the failure is silent');
+
+    /* Case differs, address is the same. Refusing this would be a false alarm
+     * on a perfectly good config. */
+    t_is($with(array('from_email' => 'ME@EXAMPLE.COM')), null,
+        'a case difference is not a mismatch');
+
+    $GLOBALS['config']['smtp'] = $saved;
 }

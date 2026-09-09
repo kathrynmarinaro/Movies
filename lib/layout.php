@@ -149,6 +149,30 @@ function page_head(string $title, ?string $tab = null): void
 }
 
 /**
+ * What the hamburger menu contains.
+ *
+ * APP-LEVEL actions: things you do once rather than daily, which is why they
+ * are not tabs. One item today; the point of the function is that adding a
+ * second one is an edit to this array and nowhere else.
+ *
+ * LOG OUT SUBMITS A FORM, IT IS NOT A LINK — note the 'form' key rather than
+ * 'href'. public/logout.php is POST-only, because a GET logout is something
+ * any other page can trigger with an <img> tag and something browsers
+ * prefetch.
+ *
+ * BUG WORTH PORTING BACK: Shirewatch has the same POST-only logout.php and a
+ * menu item that points at it with 'href', so its Log out is a GET, hits
+ * require_method('POST'), and renders a raw JSON error page instead of signing
+ * you out. Same fix as here — swap the href for a form reference.
+ */
+function menu_items(): array
+{
+    return array(
+        array('label' => 'Log out', 'form' => '#logout-form', 'danger' => true),
+    );
+}
+
+/**
  * The hamburger, for screen_head()'s $asideHtml slot.
  *
  *   screen_head('Watched', page_menu());
@@ -189,10 +213,40 @@ function screen_head(string $title, string $asideHtml = ''): void
 <?php
 }
 
-/** Close a page. Pass the same $tab you gave page_head(). */
+/**
+ * Close a page. Pass the same $tab you gave page_head().
+ *
+ * THE MENU IS WIRED HERE, NOT BY EACH SCREEN. Shirewatch shipped a hamburger
+ * that did nothing on every screen of the app, for exactly one reason:
+ * page_menu() rendered the button, menu.js exported attachMenu(), and no
+ * screen ever called it. Its tests didn't catch it because they asserted the
+ * item list was non-empty, not that anything consumed it.
+ *
+ * Loading assets/chrome.js from here is the structural fix — a new screen
+ * cannot forget the wiring, because there is no per-screen wiring to forget.
+ */
 function page_foot(?string $tab = null): void
 {
     echo "</main>\n";
+
+    /* The logout form the menu submits. Rendered here rather than in each
+     * screen for the same reason as the menu itself, and hidden rather than
+     * styled away because a visible second sign-out control would be clutter
+     * beside the menu entry that drives it. */
+    ?>
+<form id="logout-form" action="logout.php" method="post" hidden></form>
+<?php
+    /* The items as JSON in the page rather than hardcoded in the module:
+     * menu_items() stays the single source of truth, and a second list in JS
+     * would drift the first time one changes.
+     *
+     * type="application/json" so the browser does not execute it, and the
+     * JSON_HEX_* flags escape anything in a label that could close the tag. */
+    printf(
+        '<script type="application/json" id="menu-items">%s</script>' . "\n",
+        json_encode(menu_items(), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP)
+    );
+    printf('<script type="module" src="%s"></script>' . "\n", asset('assets/chrome.js'));
     ?>
 <nav class="tabbar" aria-label="Sections">
 <?php foreach (nav_tabs() as $key => $t): ?>

@@ -180,6 +180,55 @@ function render_year_sub(?int $year): string
 }
 
 /**
+ * The filter chip row on the watched grid.
+ *
+ * Lives here rather than in public/index.php because that file is a TEMPLATE,
+ * and a template that declares functions is a template that cannot be included
+ * twice — which is not a problem in a request, where it is included once, and
+ * is exactly the problem in tools/smoke-screens.php, which renders every
+ * screen in one process. Shirewatch keeps its render_filters() here for the
+ * same reason.
+ *
+ * Chips are LINKS, so filter state lives in the URL and a filtered view is
+ * bookmarkable and shareable with yourself. Tapping the active one clears it,
+ * which is what makes a single row work as a toggle without a second control.
+ *
+ * Genres are generated from the data and only the ones actually used appear —
+ * a filter that can only ever match nothing is a dead control.
+ */
+function render_filter_chips(array $active, array $genres, array $filters): string
+{
+    $url = static function (string $filter): string {
+        return $filter === ''
+            ? 'index.php'
+            : 'index.php?' . http_build_query(array('f' => $filter));
+    };
+
+    $chip = static function (string $id, string $label) use ($active, $url): string {
+        $on = in_array($id, $active, true);
+        return '<a class="chip' . ($on ? ' is-on' : '') . '" href="'
+            . h($url($on ? '' : $id)) . '">' . h($label) . '</a>';
+    };
+
+    $out = '<div class="filterbar">'
+        . '<a class="chip' . ($active === array() ? ' is-on' : '') . '" href="'
+        . h($url('')) . '">All</a>';
+
+    foreach ($filters as $id => $label) {
+        $out .= $chip((string) $id, (string) $label);
+    }
+
+    foreach ($genres as $g) {
+        if ((int) $g['count'] === 0) {
+            continue;
+        }
+        $out .= $chip('genre-' . (int) $g['id'], ucwords((string) $g['name']));
+    }
+
+    return $out . '</div>';
+}
+
+/**
  * Streaming availability, or the sentence that says there is none.
  *
  * SUBSCRIPTION SERVICES ONLY — rent and buy never reach the database (see

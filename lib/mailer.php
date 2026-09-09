@@ -352,22 +352,34 @@ function mailer_body_html(array $movie, string $kind, string $today): string
  */
 function mailer_send(string $subject, string $textBody, string $htmlBody): bool
 {
-    $problem = mailer_config_problem();
-    if ($problem !== null) {
-        mailer_last_error($problem);
-        error_log('mailer: ' . $problem);
-        return false;
-    }
-
     /* Test seam, matching lib/tmdb.php's. tools/tests-reminders.php installs a
      * callable here so the whole cron can be exercised — claim, send, ledger,
      * retry — without an SMTP server and without sending anything. Nothing in
-     * the app sets it. */
+     * the app sets it.
+     *
+     * CHECKED BEFORE THE CONFIG, so the seam replaces the WHOLE transport
+     * rather than only its last step. A test that has supplied its own
+     * transport should not also have to supply credentials for a server it
+     * will never contact — and requiring it would mean the reminder tests
+     * silently stopped exercising anything the moment a config key was
+     * renamed, reporting a refused send as a mail failure.
+     *
+     * mailer_config_problem() is not skipped, it is tested directly:
+     * tests_mailer_config() in tools/tests-reminders.php covers each branch,
+     * including the from_email/user mismatch that fails silently in
+     * production. */
     $hook = $GLOBALS['mailer_send_hook'] ?? null;
     if (is_callable($hook)) {
         $ok = (bool) $hook($subject, $textBody, $htmlBody);
         mailer_last_error($ok ? '' : 'test hook refused the message');
         return $ok;
+    }
+
+    $problem = mailer_config_problem();
+    if ($problem !== null) {
+        mailer_last_error($problem);
+        error_log('mailer: ' . $problem);
+        return false;
     }
 
     $mail = new PHPMailer\PHPMailer\PHPMailer(true);

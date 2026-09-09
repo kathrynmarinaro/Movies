@@ -1,0 +1,279 @@
+MOVIES — DEPLOYING TO HOSTINGER
+===============================
+
+Read this once through before starting. Four things here are easy to get
+wrong and silent when you do; they are marked >>.
+
+
+BEFORE YOU START
+----------------
+
+You need three things that are not in this repo:
+
+  1. A TMDB API READ ACCESS TOKEN.
+     https://www.themoviedb.org/settings/api
+
+>>   Take the "API Read Access Token" — the long one starting eyJ — NOT the
+     32-character "API Key (v3 auth)". Both are on the same page. The v3 key
+     produces a 401 on every request with a body that says "Invalid API key",
+     which reads like the key is wrong rather than the wrong KIND of key, and
+     costs an afternoon.
+
+  2. A GMAIL APP PASSWORD, for the reminder emails.
+     https://myaccount.google.com/apppasswords
+     Regular account passwords have not worked for SMTP since 2022.
+
+  3. A password for the app itself. Step 4 below turns it into a hash.
+
+
+1. WHERE THE FILES GO
+---------------------
+
+Upload the WHOLE repo into the folder the subdomain points at:
+
+    movies.kathrynmarinaro.com/
+        .htaccess             <- the document-root shim
+        config.php            <- you create this, step 3
+        schema.sql
+        lib/
+        tools/
+        docs/
+        public/               <- the app's public files
+
+>> THE FOLDER MUST BE CALLED public — NOT public_html.
+
+   Hostinger points the subdomain at the whole app folder and won't let you
+   move the document root down, so the top-level .htaccess rewrites every
+   request into public/ BY NAME and denies everything that must never be
+   served.
+
+   Rename public/ and the site is a bare 404 with nothing in any log to
+   explain it: Apache rewrites into a directory that isn't there, so PHP never
+   runs and never gets a chance to complain. If you see a 404 on a fresh
+   upload, check this first.
+
+>> FILE MANAGERS HIDE DOTFILES BY DEFAULT. Turn on "show hidden files" before
+   AND after uploading. Without .htaccess, two things are true and both are
+   bad: the domain root 403s because there is no index there, and config.php,
+   schema.sql and lib/ are all fetchable over HTTP as plain text — which means
+   your database password, your TMDB token and your cron token are readable by
+   anyone who guesses the path.
+
+   There are five .htaccess files: the root one, and a deny-all in lib/,
+   tools/, docs/ and public/posters/. Check all five arrived.
+
+If Hostinger ever lets you set the document root directly to .../public,
+do that instead and delete the root .htaccess. The private folders then sit
+genuinely outside the served tree rather than being denied inside it.
+
+
+2. DATABASE
+-----------
+
+hPanel -> Databases -> create a database and a user. Note all three values.
+
+>> ON HOSTINGER BOTH THE DATABASE NAME AND THE USERNAME ARE PREFIXED WITH YOUR
+   ACCOUNT ID — u123456_movies, not the bare "movies" in config.example.php.
+   This is the first thing that goes wrong on every deploy in this suite.
+
+Then load the schema, either over SSH:
+
+    mysql -u u123456_movies -p u123456_movies < schema.sql
+
+or by pasting schema.sql into phpMyAdmin's SQL tab.
+
+
+3. CONFIG
+---------
+
+    cp config.example.php config.php
+
+Then edit it. Every value is commented in place. The ones that matter most:
+
+    'timezone'      the zone YOU live in. This app emails you on a schedule
+                    and a one-day skew means the release-day email arrives the
+                    day after the release.
+
+    'db'            the u123456_ prefixed values from step 2.
+
+    'app_url'       'https://movies.kathrynmarinaro.com'
+
+>>                  SET THIS. It is the link inside every reminder email. It
+                    degrades in three steps, and the middle one is unavailable
+                    to a COMMAND cron, which has no request to read a host
+                    from — so a command cron with this unset sends an email
+                    naming the right screen with a link you cannot tap, while
+                    a URL-fetch cron happens to work without it. That is
+                    exactly the kind of difference that shows up months later
+                    on the wrong plan.
+
+    'tmdb.token'    the eyJ... token from "BEFORE YOU START".
+
+    'smtp'          host, user, pass (the app password), from_email, to.
+
+>>                  FROM_EMAIL MUST EQUAL USER. Gmail rewrites or outright
+                    rejects a From address it has not authorised, and the
+                    bounce is silent from this app's point of view: the send
+                    "succeeds", the ledger records a delivery, and the mail
+                    never arrives. Nothing on any screen would ever say so.
+                    lib/mailer.php refuses to send if these differ.
+
+
+4. A PASSWORD
+-------------
+
+    php tools/make-hash.php
+
+Paste the result into config.php as 'password_hash'.
+
+THE GATE FAILS CLOSED. Until you do this, every private screen refuses and
+says so. That differs from Book Tracker on purpose: two of the three lists
+here must never be public, so an unconfigured deploy has to be shut rather
+than open.
+
+(No SSH? Run it locally and upload the edited config.php.)
+
+
+5. CHECK THE HOST
+-----------------
+
+    php tools/hosting-check.php
+
+Or, with no SSH: upload it, fetch it once in a browser, THEN DELETE IT from
+the server — it reports PHP limits and extension versions, which is
+reconnaissance you have no reason to publish.
+
+It answers the three questions that decide what this app can do:
+
+  * Can this plan reach api.themoviedb.org and image.tmdb.org?
+    If not, search, posters, genres and streaming availability cannot work.
+    Every movie would have to be entered by hand through "Create new", which
+    is built and works but is a different app to use. Book Tracker had to cut
+    Google Books for exactly this reason.
+
+  * Is outbound SMTP open on port 587?
+    If not, no reminder emails. Try 465 with smtp.secure = 'ssl' before
+    giving up.
+
+  * Does a command cron work, or only a URL fetch?
+    That decides step 7.
+
+Anything marked !! is worth reading before going further.
+
+
+6. TEST THE EMAIL
+-----------------
+
+    php tools/send-test-email.php
+
+>> DO NOT SKIP THIS. The reminder job runs once a day, unattended, and the
+   only way you find out it is broken is that an email you were expecting
+   never arrives — by which time the film is out. This is the one chance to
+   see the failure with a message that names the fix.
+
+A success means the SMTP server ACCEPTED the message, which is not the same as
+it arriving. If nothing shows up in a few minutes, check spam, then re-check
+that from_email is an address Gmail has authorised.
+
+
+7. THE CRON
+-----------
+
+Once a day, early morning in your timezone.
+
+If step 5 said a command cron works, hPanel -> Advanced -> Cron Jobs:
+
+    php /home/uXXXX/domains/movies.kathrynmarinaro.com/tools/cron-reminders.php
+
+If your plan only offers a URL fetch, first generate a token:
+
+    php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
+
+put it in config.php as cron.token, and point the scheduler at:
+
+    https://movies.kathrynmarinaro.com/cron.php?token=THE_TOKEN
+
+Both run the identical function in lib/cron.php. Leave cron.token empty if you
+are using the command cron — public/cron.php then refuses every request rather
+than running unauthenticated.
+
+To watch it work before trusting it:
+
+    php tools/cron-reminders.php --dry-run
+
+Dry run writes nothing and sends nothing; it prints what would have gone.
+
+
+8. VERIFY
+---------
+
+The second group is the one that matters.
+
+    curl -I https://movies.kathrynmarinaro.com/                 # 200 (login)
+    curl -I https://movies.kathrynmarinaro.com/collection.php   # 200 (public)
+
+    curl -I https://movies.kathrynmarinaro.com/config.php       # 403 or 404
+    curl -I https://movies.kathrynmarinaro.com/schema.sql       # 403 or 404
+    curl -I https://movies.kathrynmarinaro.com/lib/db.php       # 403 or 404
+    curl -I https://movies.kathrynmarinaro.com/lib/mailer.php   # 403 or 404
+    curl -I https://movies.kathrynmarinaro.com/tools/seed.php   # 403 or 404
+    curl -I https://movies.kathrynmarinaro.com/CLAUDE.md        # 403 or 404
+
+403 AND 404 ARE BOTH PASSES — ONLY 200 IS A FAILURE. 403 means an .htaccess
+denied it outright; 404 means the rewrite sent it into public/, where it does
+not exist. Hostinger runs LiteSpeed, which resolves the rewrite before the
+file-level deny, so top-level files tend to 404 while anything under lib/ or
+tools/ hits that directory's deny file and 403s. Plain Apache 403s everything.
+
+Then open collection.php in a private window, signed out, and confirm you see
+ONLY watched films — no Coming Soon, no To Watch. That separation has three
+independent guards and a test that greps the rendered bytes, but it is the one
+thing worth confirming with your own eyes once.
+
+
+FOUR THINGS IN .htaccess THAT ARE LOAD-BEARING
+----------------------------------------------
+
+The comments in the file say the same at length, so nobody "tidies" them away:
+
+  * The rewrite is UNCONDITIONAL. The idiomatic
+    `RewriteCond %{REQUEST_FILENAME} !-f` guard is actively harmful here:
+    config.php DOES exist, so that guard would serve it instead of rewriting
+    it into a 404.
+
+  * The loop guard tests the RULE PATTERN, not %{REQUEST_URI}. In .htaccess
+    the rewrite engine re-runs after an internal rewrite, and REQUEST_URI
+    still holds the original path on that pass — a condition on it never goes
+    false and the rewrite loops until Apache gives up.
+
+  * The per-directory deny files are NOT redundant. The rewrite lives inside
+    <IfModule mod_rewrite.c>; if that module is unavailable it silently does
+    nothing and the private files are wide open. The deny files need no
+    modules.
+
+  * .git needs its own rule. The <FilesMatch "^\."> block matches the final
+    path segment, so /.git/config reads as the innocuous filename "config" and
+    slips through. A RedirectMatch covers it — excluding .well-known, because
+    Let's Encrypt renewal lives there and blocking it breaks certificate
+    renewal months later.
+
+
+IF SOMETHING IS WRONG
+---------------------
+
+Blank white page          -> PHP error with display_errors off. Check the
+                             error log in hPanel.
+404 on everything         -> public/ is named public_html/, or .htaccess did
+                             not upload. See step 1.
+"config.php is missing"   -> it is, or it is in the wrong folder. It sits
+                             NEXT TO lib/, not inside public/.
+"no password set"         -> step 4.
+db_unavailable            -> the u123456_ prefix. Step 2.
+Search finds nothing      -> tools/hosting-check.php. Either TMDB is
+                             unreachable from this plan or the token is the
+                             v3 kind.
+Posters missing, search   -> image.tmdb.org unreachable, or public/posters/
+  works                      is not writable.
+No reminder emails        -> tools/send-test-email.php first, then check the
+                             cron actually ran. A failed send leaves a row in
+                             movie_reminder_sends with last_error set.

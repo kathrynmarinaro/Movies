@@ -13,6 +13,13 @@ config.php
 public/posters/*
 !public/posters/.gitkeep
 
+# NOT the deny file. `public/posters/*` above matches dotfiles too, so without
+# this line the .htaccess that stops PHP executing in the one directory the app
+# writes uploaded bytes into is never committed — and therefore never deployed.
+# It would be missing on the server with nothing to indicate it, which is the
+# worst way for a security control to be absent.
+!public/posters/.htaccess
+
 # --- agent worktrees ---------------------------------------------------
 # Claude Code creates a git worktree per parallel agent in here. They're live
 # working directories with their own branches, not source. Only worktrees/ is
