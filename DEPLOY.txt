@@ -29,11 +29,20 @@ You need three things that are not in this repo:
 1. WHERE THE FILES GO
 ---------------------
 
-Upload the WHOLE repo into the folder the subdomain points at:
+Build the bundle first:
+
+    php tools/build-deploy.php
+
+That writes movies-deploy-YYYY-MM-DD.zip. It deliberately leaves out
+config.php (your database password, the admin hash, the TMDB token and
+the cron token all live in it) and it FAILS THE BUILD if any of the five
+.htaccess files did not make it in — see below for why that matters.
+
+Upload the CONTENTS of that zip into the folder the subdomain points at:
 
     movies.kathrynmarinaro.com/
         .htaccess             <- the document-root shim
-        config.php            <- you create this, step 3
+        config.example.php    <- copy to config.php in step 3
         schema.sql
         lib/
         tools/

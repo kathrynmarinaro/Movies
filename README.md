@@ -145,8 +145,16 @@ Both run the identical function in `lib/cron.php`.
 
 ## Deploying to Hostinger
 
-Upload the **whole repo** by FTP into the folder the subdomain points at.
-Nothing to build or compile. Full instructions in `DEPLOY.txt` — read it, there
+```bash
+php tools/build-deploy.php     # -> movies-deploy-YYYY-MM-DD.zip
+```
+
+Upload the zip's **contents** by FTP into the folder the subdomain points at.
+Nothing to compile — the build step only packages files and checks two things
+a human zipping the folder gets wrong: it excludes `config.php` (which holds
+every secret this app has) and it fails the build if any of the five
+`.htaccess` files is missing, because that failure is silent and the site
+would come up looking perfect while serving `config.php` as plain text. Full instructions in `DEPLOY.txt` — read it, there
 are four things that are easy to get wrong and silent when you do.
 
 `public/posters/` must be writable; that's where fetched and uploaded poster
