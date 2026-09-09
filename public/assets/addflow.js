@@ -51,8 +51,19 @@ const cache = new Map();
 let timer = null;
 let inFlight = null;
 
-function setError(message) {
-  if (errorBox) { errorBox.textContent = message; }
+/**
+ * The one message slot under the search box.
+ *
+ * `tone` matters: "No matches on TMDB" is a neutral fact about your spelling,
+ * and rendering it in error red — which .field-err is — would make an ordinary
+ * empty search look like the app broke. Only an actual failure gets that
+ * treatment.
+ */
+function setMessage(message, tone = 'error') {
+  if (!errorBox) { return; }
+  errorBox.textContent = message;
+  errorBox.className = message === '' ? 'field-err'
+    : (tone === 'error' ? 'field-err' : 'hint');
 }
 
 /** Where tapping a result goes: the edit form, prefilled from TMDB. */
@@ -142,7 +153,23 @@ async function search(query) {
     const data = await apiGet('api/search.php', { q: query }, inFlight.signal);
     const results = Array.isArray(data.results) ? data.results : [];
     cache.set(key, results);
-    setError('');
+
+    /* An empty list has two very different causes and they need different
+       things said. `reached` is the server telling us which — "no such film"
+       means try another spelling, "cannot reach TMDB" means this host can't do
+       search at all and everything has to be typed. On a first deploy the
+       second message is the answer to "why does search do nothing", and
+       silence here is what would send somebody hunting through logs. */
+    if (results.length === 0) {
+      if (data.reached === false) {
+        setMessage('Could not reach TMDB. You can still add this movie by hand.', 'error');
+      } else {
+        setMessage('No matches on TMDB.', 'neutral');
+      }
+    } else {
+      setMessage('');
+    }
+
     render(results);
   } catch (error) {
     /* An abort is this code's own doing, not a failure to report. */
@@ -157,7 +184,7 @@ async function search(query) {
     /* Everything else — TMDB down, no API token, the host unable to reach it
        at all — degrades to the manual path rather than an empty screen. The
        message says what to do next, not what went wrong internally. */
-    setError('Could not search TMDB. You can still add this movie by hand.');
+    setMessage('Could not search TMDB. You can still add this movie by hand.', 'error');
     render([]);
   } finally {
     inFlight = null;
@@ -174,7 +201,7 @@ if (input && list) {
       /* Below the threshold, still show Create new — typing one character and
          seeing an empty box reads as "this is broken". */
       if (inFlight) { inFlight.abort(); }
-      setError('');
+      setMessage('');
       render([]);
       if (query.length === 0) { list.replaceChildren(); }
       return;

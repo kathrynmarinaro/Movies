@@ -369,9 +369,110 @@ function tests_reminders(): void
         'an undated movie still gets a readable subject'
     );
 
+    tests_reminder_status_lines();
     tests_mailer_config();
 
     test_clear_hooks();
+}
+
+/**
+ * The line the movie screen shows about each reminder.
+ *
+ * These exist because the screen originally rendered the SCHEDULE, which reads
+ * as a promise: a film released last week showed "Week-ahead email on August
+ * 27" — future tense about a day already gone, with no way to tell whether the
+ * email actually went. Every assertion below is one of the states that was
+ * being reported as if it were upcoming.
+ */
+function tests_reminder_status_lines(): void
+{
+    t_group('what the movie screen says about a reminder');
+
+    $today = '2026-06-01';
+
+    t_reset();
+    test_install_mailer();
+    test_install_tmdb(array());
+
+    /* Still ahead: the only case that is legitimately a promise. */
+    $id = test_add_coming_soon(
+        array('title' => 'Ahead', 'release_date' => test_date($today, 7)),
+        test_date($today, -30)
+    );
+    $line = reminder_status_line(movie_get($id), REMINDER_HEADS_UP, $today,
+        reminder_sends_for_movie($id));
+    t_ok(str_contains($line, 'Week-ahead email on'), 'an upcoming reminder reads as upcoming');
+
+    /* Delivered: past tense, with the date it went. */
+    cron_reminders_run($today);
+    $line = reminder_status_line(movie_get($id), REMINDER_HEADS_UP, $today,
+        reminder_sends_for_movie($id));
+    t_ok(str_contains($line, 'sent on'), 'a delivered reminder reads as sent');
+    t_ok(!str_contains($line, 'email on ' . fmt_date(heads_up_date(test_date($today, 7), 7))),
+        'and no longer reads as a future promise');
+
+    /* THE BUG THIS WAS WRITTEN FOR. A past due date with no ledger row at all
+     * means the cron did not run that day, and nothing else in the app can
+     * tell you that. */
+    t_reset();
+    $id = movie_save(array(
+        'title' => 'Cron Never Ran', 'status' => 'coming_soon',
+        'release_date' => test_date($today, -6), 'heads_up_eligible' => 1,
+    ), null, test_date($today, -40));
+
+    $line = reminder_status_line(movie_get($id), REMINDER_HEADS_UP, $today,
+        reminder_sends_for_movie($id));
+    t_ok(str_contains($line, 'never went'), 'a missed reminder says so plainly');
+    t_ok(str_contains($line, 'cron'), 'and names the likely cause');
+
+    /* The late add: not a failure, and must not read like one. */
+    t_reset();
+    $late = test_add_coming_soon(
+        array('title' => 'Late', 'release_date' => test_date($today, 3)),
+        $today
+    );
+    $line = reminder_status_line(movie_get($late), REMINDER_HEADS_UP, $today,
+        reminder_sends_for_movie($late));
+    t_ok(str_contains($line, 'No week-ahead email'), 'a late add explains itself');
+    t_ok(!str_contains($line, 'never went'), 'and is not reported as a missed send');
+
+    /* Skipped because the date moved — the verify-before-send outcome. */
+    t_reset();
+    test_install_mailer();
+    $id = test_add_coming_soon(array(
+        'title' => 'Moved', 'tmdb_id' => 4242, 'release_date' => test_date($today, 7),
+    ), test_date($today, -30));
+    test_install_tmdb(array(4242 => test_date($today, 97)));
+    cron_reminders_run($today);
+
+    $line = reminder_status_line(movie_get($id), REMINDER_HEADS_UP, $today,
+        reminder_sends_for_movie($id));
+    t_ok(str_contains($line, 'release date moved'), 'a skipped send says the date moved');
+    t_ok(str_contains($line, 'rescheduled'), 'and that it is rescheduled');
+
+    /* A real failure, which is different from a skip. */
+    t_reset();
+    test_install_tmdb(array());
+    test_install_mailer(false);
+    $id = test_add_coming_soon(
+        array('title' => 'Failed', 'release_date' => test_date($today, 7)),
+        test_date($today, -30)
+    );
+    cron_reminders_run($today);
+    $line = reminder_status_line(movie_get($id), REMINDER_HEADS_UP, $today,
+        reminder_sends_for_movie($id));
+    t_ok(str_contains($line, 'failed to send'), 'a failed send says so');
+    t_ok(str_contains($line, 'retried'), 'and that it will be retried');
+
+    /* Undated and opt-out, the two quiet cases. */
+    t_reset();
+    $id = test_add_coming_soon(array('title' => 'TBA', 'release_date' => null), $today);
+    t_ok(str_contains(reminder_status_line(movie_get($id), REMINDER_HEADS_UP, $today, array()),
+        'until this has a release date'), 'an undated movie schedules nothing');
+    t_ok(str_contains(reminder_status_line(
+        array('release_date' => '2026-07-01', 'day_of_reminder' => 0, 'heads_up_eligible' => 1),
+        REMINDER_DAY_OF, $today, array()), 'No release-day email'),
+        'the day-of toggle being off reads plainly');
 }
 
 /**

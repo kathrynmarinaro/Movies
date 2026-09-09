@@ -25,11 +25,19 @@ require_admin_api();
 
 $query = trim((string) ($_GET['q'] ?? ''));
 if ($query === '') {
-    json_out(array('results' => array()));
+    json_out(array('results' => array(), 'reached' => true));
 }
 
 /* Bounded before it reaches the network. A megabyte of query string would be
  * forwarded to TMDB verbatim otherwise, and no real title is this long. */
 $query = mb_substr($query, 0, 200, 'UTF-8');
 
-json_out(array('results' => tmdb_search($query)));
+$results = tmdb_search($query);
+
+/* `reached` is the difference between "TMDB has nothing called that" and "this
+ * host cannot reach TMDB" — both of which are an empty list, and which need
+ * completely different things said to the person typing. The add flow shows a
+ * different message for each; on a first deploy the second one is the answer
+ * to "why does search do nothing", and it is the thing tools/hosting-check.php
+ * exists to confirm. */
+json_out(array('results' => $results, 'reached' => tmdb_reached()));

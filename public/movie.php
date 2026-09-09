@@ -12,6 +12,7 @@ require_once __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/repo.php';
 require_once __DIR__ . '/../lib/render.php';
 require_once __DIR__ . '/../lib/tmdb.php';
+require_once __DIR__ . '/../lib/reminders.php';
 require_once __DIR__ . '/../lib/layout.php';
 
 require_admin();
@@ -117,30 +118,16 @@ screen_head((string) $movie['title'], page_menu());
 
 <?php if ($status === 'coming_soon'): ?>
   <h2 class="section-title">Reminders</h2>
-  <ul class="list" style="list-style:none;margin:0;padding:0">
-    <li class="hint">
-      <?php
-      /* Say what WILL happen, not what the settings are. "heads_up_eligible is
-       * false" is a database fact; "no week-ahead email, because it was added
-       * inside that window" is the thing a person needs to know when they
-       * wonder why no email arrived. */
-      $headsUp = heads_up_date($movie['release_date'] ?? null, reminders_lead_days());
-      if ($headsUp === null) {
-          echo 'No reminders until this has a release date.';
-      } elseif (!(int) $movie['heads_up_eligible']) {
-          echo 'No week-ahead email — this was added less than '
-             . (int) reminders_lead_days() . ' days before release.';
-      } else {
-          echo 'Week-ahead email on ' . h(fmt_date($headsUp));
-      }
-      ?>
-    </li>
-    <li class="hint">
-      <?= (int) $movie['day_of_reminder']
-          ? 'Release-day email on ' . h(fmt_date($movie['release_date']))
-          : 'No release-day email.' ?>
-    </li>
-  </ul>
+  <?php
+  /* What HAPPENED, not what the rule is. reminder_status_line() reads the send
+   * ledger, so a past date reads as history — "sent on August 27" — rather
+   * than as a promise about a day that has already gone. It also says plainly
+   * when a due date passed with no email at all, which is the one failure
+   * nothing else in this app can tell you about. */
+  $sends = reminder_sends_for_movie($id);
+  ?>
+  <p class="hint"><?= h(reminder_status_line($movie, REMINDER_HEADS_UP, $today, $sends)) ?></p>
+  <p class="hint"><?= h(reminder_status_line($movie, REMINDER_DAY_OF, $today, $sends)) ?></p>
 
   <?php /* The manual re-check. Release dates are frozen (schema.sql), so this
            is the deliberate way to move one — plus the automatic check the

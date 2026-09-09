@@ -124,6 +124,29 @@ function tmdb_http(string $url, int $timeout, bool $auth = true): ?array
     return array('status' => $status, 'body' => $body);
 }
 
+/**
+ * Did the last TMDB call reach the API at all?
+ *
+ * "TMDB has no film by that name" and "this host cannot reach TMDB" both come
+ * back as an empty result list, and they need completely different responses
+ * from the person looking at the screen: one means try another spelling, the
+ * other means the plan cannot do this and everything must be entered by hand.
+ *
+ * A module-level static rather than a richer return type, because the search
+ * contract is a plain list and every caller but one is happy with that. Read
+ * it immediately after a call; the next one overwrites it.
+ *
+ * This is the same shape as mailer_last_error(), and for the same reason.
+ */
+function tmdb_reached(?bool $set = null): bool
+{
+    static $reached = true;
+    if ($set !== null) {
+        $reached = $set;
+    }
+    return $reached;
+}
+
 /** GET a TMDB API path and return the decoded array, or null. */
 function tmdb_get_json(string $path, array $query = array()): ?array
 {
@@ -135,10 +158,18 @@ function tmdb_get_json(string $path, array $query = array()): ?array
 
     $res = tmdb_http($url, (int) cfg('tmdb.timeout', 15));
     if ($res === null) {
+        /* No response at all: DNS, a refused connection, a timeout, or no API
+         * token configured. This is the one that changes what the app can do. */
+        tmdb_reached(false);
         return null;
     }
+    tmdb_reached(true);
+
     if ($res['status'] < 200 || $res['status'] > 299) {
         error_log('tmdb: HTTP ' . $res['status'] . ' for ' . $path);
+        /* A 401 means the host CAN reach TMDB and the token is wrong — which
+         * is a five-minute fix, not a re-plan. Reported as reached, because
+         * that is the true and more useful statement. */
         return null;
     }
 

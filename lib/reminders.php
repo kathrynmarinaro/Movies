@@ -184,6 +184,102 @@ function reminder_mark_failed(int $movieId, string $kind, string $triggerDate, s
 }
 
 /**
+ * What actually happened to this movie's reminders, keyed by kind.
+ *
+ *   ['heads_up' => ['trigger_date' => ..., 'sent_at' => ..., 'last_error' => ...], ...]
+ *
+ * The ledger is the only record of whether an email really went, and the movie
+ * screen needs it to say something true. Without this it can only report the
+ * SCHEDULE — which reads as a promise even when the date is months past and
+ * the email either went, failed, or was skipped because TMDB moved the date.
+ *
+ * Only the most recent row per kind. A movie whose release date has moved has
+ * one row per date it was ever scheduled for, and the interesting one is the
+ * one that matches where it stands now.
+ */
+function reminder_sends_for_movie(int $movieId): array
+{
+    $rows = q(
+        'SELECT kind, trigger_date, sent_at, last_error
+           FROM movie_reminder_sends
+          WHERE movie_id = ?
+          ORDER BY trigger_date ASC',
+        array($movieId)
+    )->fetchAll();
+
+    $byKind = array();
+    foreach ($rows as $r) {
+        $byKind[(string) $r['kind']] = $r;   // later rows win — the most recent
+    }
+    return $byKind;
+}
+
+/**
+ * One line saying where a reminder stands, in the tense the facts deserve.
+ *
+ * THE POINT OF THIS FUNCTION. A schedule rendered as-is reads as a promise:
+ * "Week-ahead email on August 27" is fine in July and actively misleading in
+ * September, when the date is past and the email either went, failed, or was
+ * never eligible. Somebody looking at this screen wants to know whether they
+ * were told, not what the rule was.
+ *
+ * Six states, and each of them happens:
+ *   - no release date        -> nothing is scheduled at all
+ *   - not eligible           -> the late-add rule; say so, it is not a bug
+ *   - delivered              -> past tense, with the date it went
+ *   - attempted and failed   -> say so, because the retry has a deadline
+ *   - skipped, date moved    -> the verify-before-send outcome
+ *   - still ahead            -> future tense, the only case that is a promise
+ */
+function reminder_status_line(array $movie, string $kind, string $today, array $sends): string
+{
+    $release = $movie['release_date'] ?? null;
+
+    if ($release === null) {
+        return $kind === REMINDER_HEADS_UP
+            ? 'No reminders until this has a release date.'
+            : 'No release-day email until this has a release date.';
+    }
+
+    if ($kind === REMINDER_HEADS_UP && !(int) ($movie['heads_up_eligible'] ?? 0)) {
+        return 'No week-ahead email — this was added less than '
+            . reminders_lead_days() . ' days before release.';
+    }
+    if ($kind === REMINDER_DAY_OF && !(int) ($movie['day_of_reminder'] ?? 0)) {
+        return 'No release-day email.';
+    }
+
+    $label = $kind === REMINDER_HEADS_UP ? 'Week-ahead email' : 'Release-day email';
+    $due   = $kind === REMINDER_HEADS_UP
+        ? heads_up_date($release, reminders_lead_days())
+        : $release;
+
+    $row = $sends[$kind] ?? null;
+
+    if ($row !== null && !empty($row['sent_at'])) {
+        return $label . ' sent on ' . fmt_date((string) $row['sent_at']) . '.';
+    }
+    if ($row !== null && !empty($row['last_error'])) {
+        /* Two very different situations wearing one column. A skip because the
+         * date moved is the system working; a real failure is not. */
+        return str_contains((string) $row['last_error'], 'moved the release date')
+            ? $label . ' was not sent — the release date moved. It is rescheduled.'
+            : $label . ' failed to send. It will be retried.';
+    }
+
+    if ($due !== null && $due < $today) {
+        /* Due date passed with no ledger row at all: the cron did not run that
+         * day. Worth saying plainly — this is the one failure the app cannot
+         * otherwise tell you about, and quietly showing a past date as if it
+         * were upcoming is how it stays hidden. */
+        return $label . ' was due on ' . fmt_date($due) . ' but never went. '
+            . 'Check that the daily cron is running.';
+    }
+
+    return $label . ' on ' . fmt_date($due) . '.';
+}
+
+/**
  * Re-check one movie's release date against TMDB and correct it if it moved.
  *
  * ---------------------------------------------------------------------------
