@@ -61,7 +61,26 @@ harness_pdo($root . '/schema.sql');
  * which is the "not on any subscription service" path. */
 $GLOBALS['tmdb_http_hook'] = static fn() => null;
 
-seed_run(movies_today(), false);
+/* SEED IN THE PAST rather than moving the clock forward.
+ *
+ * "__advance_days: 60" means "show me this screen as it looks sixty days from
+ * now", and the way to get there is to build the fixture sixty days ago and
+ * render with the real clock. The alternative — an override inside
+ * movies_today() — would be production code existing only for a test, and
+ * lib/dates.php's whole discipline is that exactly one function asks what day
+ * it is and nothing may fake it.
+ *
+ * This is also the more faithful test: the rows really were written on an
+ * older date, so heads_up_eligible and the section were decided then, exactly
+ * as they would have been. */
+$seedDay = movies_today();
+if (isset($query['__advance_days'])) {
+    $seedDay = (new DateTimeImmutable('-' . (int) $query['__advance_days'] . ' days'))
+        ->format('Y-m-d');
+    unset($query['__advance_days']);
+}
+
+seed_run($seedDay, false);
 
 /* Resolve a movie id from a title, since the caller cannot know the ids. */
 if (isset($query['__id_title'])) {

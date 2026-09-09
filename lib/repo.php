@@ -266,6 +266,30 @@ function movie_save(array $fields, ?int $id = null, ?string $today = null): int
         $data['heads_up_eligible'] = ($headsUp !== null && $headsUp >= $today) ? 1 : 0;
     }
 
+    /* THE SECTION IS DECIDED, NOT SUBMITTED.
+     *
+     * Coming Soon and To Watch are one screen with two sections, and which one
+     * a film is in is a fact about its release date rather than a choice — so
+     * the same rule that re-settles rows daily (movies_resettle) also applies
+     * on the way in. Add something that came out last year and it lands in To
+     * Watch without anybody having to pick, which is the whole point.
+     *
+     * `watched` passes through untouched: movie_section() refuses to move it,
+     * because that is the one status a person sets deliberately.
+     *
+     * Only applied when we know BOTH halves. On an update that changes just
+     * the notes, `status` and `release_date` are absent from $data and the
+     * stored values are none of this function's business — re-deriving from a
+     * partial row is how a movie silently changes section because somebody
+     * fixed a typo. */
+    if (array_key_exists('status', $data)) {
+        $release = array_key_exists('release_date', $data)
+            ? $data['release_date']
+            : ($id === null ? null : (movie_get($id)['release_date'] ?? null));
+
+        $data['status'] = movie_section((string) $data['status'], $release, $today);
+    }
+
     if ($id === null) {
         $cols = implode(', ', array_keys($data));
         $ph   = implode(', ', array_fill(0, count($data), '?'));
@@ -317,6 +341,101 @@ function movie_delete(int $id): void
 function reminders_lead_days(): int
 {
     return max(0, (int) cfg('reminders.heads_up_days', 7));
+}
+
+/** How long a film is assumed to stay in theatres. One place. */
+function theatrical_window_days(): int
+{
+    return max(0, (int) cfg('theatrical_window_days', 45));
+}
+
+/**
+ * Which section an unwatched movie belongs in, given its release date.
+ *
+ * ---------------------------------------------------------------------------
+ * THE ONLY FUNCTION ALLOWED TO DECIDE THIS. Same discipline as
+ * heads_up_date(): the save path, the daily sweep and the screens all call it,
+ * so a movie can never be in a section the app would not have put it in.
+ * ---------------------------------------------------------------------------
+ *
+ * Coming Soon and To Watch are one screen with two sections, and which section
+ * a film is in is not a thing you set — it is a fact about the calendar:
+ *
+ *   still in theatres (or not out yet)  ->  coming_soon
+ *   out of theatres                     ->  to_watch
+ *
+ * "OUT OF THEATRES" IS AN ASSUMPTION, NOT A FACT TMDB GIVES US. There is no
+ * end-of-run date in the API — only the release date — so this approximates it
+ * as release + theatrical_window_days (config, default 45). Forty-five days is
+ * roughly the current studio window before a film reaches streaming or PVOD.
+ * Change the config value and every movie re-settles on the next sweep; the
+ * number is not baked into a query anywhere.
+ *
+ * TWO CASES ARE DELIBERATELY LEFT ALONE:
+ *
+ *   - `watched`. A film you have seen is never moved by a date. It is the one
+ *     status a person sets explicitly and it must stay set.
+ *   - A NULL release date. An announced-but-undated film is genuinely unknown,
+ *     and guessing would move it off Coming Soon — where somebody deliberately
+ *     put it — on the strength of no information at all.
+ */
+function movie_section(string $status, ?string $releaseDate, string $today): string
+{
+    if ($status === 'watched') {
+        return 'watched';
+    }
+    if ($releaseDate === null || $releaseDate === '') {
+        return $status === 'to_watch' ? 'to_watch' : 'coming_soon';
+    }
+
+    $leavesTheatres = movies_parse_date($releaseDate);
+    if ($leavesTheatres === null) {
+        return $status;
+    }
+    $out = $leavesTheatres->modify('+' . theatrical_window_days() . ' days')->format('Y-m-d');
+
+    return $out >= $today ? 'coming_soon' : 'to_watch';
+}
+
+/**
+ * Move every unwatched movie into the section its release date says it belongs
+ * in. Returns how many moved.
+ *
+ * THE "AUTOMATICALLY MOVES" HALF OF movie_section(). Nothing else re-settles
+ * rows: a movie's section changes because a DAY PASSED, and nothing in a
+ * database notices a day passing on its own.
+ *
+ * Called from two places, and it needs both:
+ *   - the daily cron, which is the mechanism;
+ *   - the watchlist screen itself, so the page is right the moment you open it
+ *     rather than up to a day stale, and so the app is still correct on a plan
+ *     where the cron was never set up.
+ *
+ * It is a single UPDATE affecting zero rows on almost every call, which is why
+ * running it on a page render is affordable. Idempotent by construction —
+ * movie_section() is a pure function of the date.
+ */
+function movies_resettle(string $today): int
+{
+    $rows = q(
+        'SELECT id, status, release_date FROM movies WHERE status IN (?, ?)',
+        array('coming_soon', 'to_watch')
+    )->fetchAll();
+
+    $moved = 0;
+    foreach ($rows as $row) {
+        $want = movie_section((string) $row['status'], $row['release_date'], $today);
+        if ($want !== (string) $row['status']) {
+            /* Written directly rather than through movie_save(), because
+             * movie_save() recomputes heads_up_eligible when release_date is
+             * present — and this write does not touch the release date, so
+             * re-deciding a reminder window here would be a side effect of
+             * a day passing. */
+            q('UPDATE movies SET status = ? WHERE id = ?', array($want, (int) $row['id']));
+            $moved++;
+        }
+    }
+    return $moved;
 }
 
 /* ----------------------------------------------------------------- genres */

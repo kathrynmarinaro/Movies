@@ -337,6 +337,98 @@ function tests_repo(): void
         t_ok(!array_key_exists($private, $public[0]), $private . ' is not public');
     }
 
+    /* ============================================== SECTIONS AND RE-SETTLING */
+
+    t_group('the section is decided by the release date, not chosen');
+
+    t_reset();
+    $today = '2026-06-01';
+    $win   = theatrical_window_days();
+
+    /* Not out yet -> Coming Soon, whatever was asked for. */
+    $soon = movie_save(array(
+        'title' => 'Not Out Yet', 'status' => 'to_watch',
+        'release_date' => test_date($today, 30),
+    ), null, $today);
+    t_is(movie_get($soon)['status'], 'coming_soon',
+        'an unreleased film lands in Coming Soon even if To Watch was asked for');
+
+    /* Out, but still inside the theatrical window -> still Coming Soon. */
+    $inTheatres = movie_save(array(
+        'title' => 'Still In Theatres', 'status' => 'coming_soon',
+        'release_date' => test_date($today, -($win - 5)),
+    ), null, $today);
+    t_is(movie_get($inTheatres)['status'], 'coming_soon',
+        'a film still in theatres stays in Coming Soon');
+
+    /* Past the window -> To Watch, automatically. */
+    $gone = movie_save(array(
+        'title' => 'Long Gone', 'status' => 'coming_soon',
+        'release_date' => test_date($today, -($win + 5)),
+    ), null, $today);
+    t_is(movie_get($gone)['status'], 'to_watch',
+        'a film out of theatres lands in To Watch even if Coming Soon was asked for');
+
+    /* An undated film is genuinely unknown and must not be guessed at. */
+    $undated = movie_save(array(
+        'title' => 'Undated', 'status' => 'coming_soon', 'release_date' => null,
+    ), null, $today);
+    t_is(movie_get($undated)['status'], 'coming_soon',
+        'an undated film is left where it was put');
+
+    /* WATCHED IS NEVER MOVED BY A DATE. It is the one status a person sets. */
+    $seen = movie_save(array(
+        'title' => 'Seen Long Ago', 'status' => 'watched',
+        'release_date' => test_date($today, -900), 'date_watched' => $today,
+    ), null, $today);
+    t_is(movie_get($seen)['status'], 'watched', 'a watched film is never re-sectioned');
+
+    t_group('a day passing moves a film out of theatres');
+
+    t_reset();
+
+    /* Saved while still in theatres... */
+    $id = movie_save(array(
+        'title' => 'Leaves Tomorrow', 'status' => 'coming_soon',
+        'release_date' => test_date($today, -$win),
+    ), null, $today);
+    t_is(movie_get($id)['status'], 'coming_soon', 'in theatres on its last day');
+
+    /* ...and the sweep run the NEXT day moves it, with nothing else changing. */
+    $moved = movies_resettle(test_date($today, 1));
+    t_is($moved, 1, 'the sweep moves exactly one film');
+    t_is(movie_get($id)['status'], 'to_watch', 'and it is now in To Watch');
+
+    /* Idempotent: running it again moves nothing. */
+    t_is(movies_resettle(test_date($today, 1)), 0, 'running the sweep again moves nothing');
+
+    /* The sweep must not disturb watched films or reminder settings. */
+    t_reset();
+    $seen = movie_save(array(
+        'title' => 'Watched Old', 'status' => 'watched',
+        'release_date' => test_date($today, -900), 'date_watched' => test_date($today, -10),
+    ), null, $today);
+    $soon = movie_save(array(
+        'title' => 'Upcoming', 'status' => 'coming_soon',
+        'release_date' => test_date($today, 30), 'day_of_reminder' => 1,
+    ), null, $today);
+
+    t_is(movies_resettle($today), 0, 'the sweep leaves watched and upcoming films alone');
+    t_is(movie_get($seen)['status'], 'watched', 'watched is untouched');
+    t_is((int) movie_get($soon)['heads_up_eligible'], 1,
+        'and a sweep does not re-decide a reminder window');
+
+    /* A partial edit must not silently re-section a film. Editing the notes of
+     * a Coming Soon movie whose date is old should not move it, because the
+     * caller did not pass a status at all. */
+    t_reset();
+    $id = movie_save(array(
+        'title' => 'Notes Edit', 'status' => 'coming_soon',
+        'release_date' => test_date($today, 30),
+    ), null, $today);
+    movie_save(array('notes' => 'just a note'), $id, $today);
+    t_is(movie_get($id)['status'], 'coming_soon', 'editing one field does not re-section');
+
     /* --------------------------------------------------- render fail-soft */
 
     t_group('rendering degrades rather than breaking');

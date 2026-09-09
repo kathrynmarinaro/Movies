@@ -43,7 +43,9 @@ $providers = providers_for_movie(
 
 /* Which tab to leave lit, so the bar reflects where you came from. */
 $tab = match ($status) {
-    'coming_soon' => 'coming-soon',
+    /* Both unwatched sections live on watchlist.php now, so they light the
+     * same tab. */
+    'coming_soon' => 'watchlist',
     'to_watch'    => 'watchlist',
     default       => 'watched',
 };

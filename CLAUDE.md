@@ -101,9 +101,22 @@ in your report.** Two are outstanding right now:
   **sends anyway**, on the frozen date: an API outage must never silently
   cancel a reminder.
 
-- **A released movie stays on Coming Soon** until you mark it watched. It is
-  not auto-moved to To Watch. That's the pile the screen exists to surface, and
-  a silent reclassification moves it to a screen you weren't looking at.
+- **Coming Soon and To Watch are one screen with two sections, and the section
+  is not a choice.** They were two tabs. They answer one question — "what am I
+  going to watch?" — and the difference between them is a fact about the
+  calendar, so `movie_section()` in `lib/repo.php` decides it and is the only
+  thing allowed to: still in theatres (or not out yet) → Coming Soon, out of
+  theatres → To Watch. Applied on save *and* by a daily sweep
+  (`movies_resettle()`), because a film changes section when a day passes and
+  nothing in a database notices that on its own. The add flow therefore never
+  asks which list.
+
+- **"Out of theatres" is an assumption, not a fact TMDB gives us.** There is no
+  end-of-run date in the API — only the release date — so it is approximated as
+  release + `theatrical_window_days` (config, default 45). Change the value and
+  everything re-settles on the next sweep; the number is not baked into a query.
+  Two cases are deliberately never moved: `watched` (the one status a person
+  sets), and a film with no release date (unknown is not the same as out).
 
 - **`is_rewatchable` is a column, not a genre tag** — even though it renders as
   a chip beside the genres, which is what the brief asked for. The brief also
@@ -117,7 +130,27 @@ in your report.** Two are outstanding right now:
   to edit to deploy.
 
 - **The favorite marker is a heart, never a star.** The rating beside it is
-  already five stars; a sixth is illegible at phone size.
+  already five stars; a sixth is illegible at phone size. It is `--heart`
+  (#d4576b), deliberately NOT the accent teal — it sits on poster art of every
+  colour and has to stay findable. Ported from Book Tracker along with
+  `--star`.
+
+- **Stars are glyphs, not SVG.** Shirewatch's `.star` is a 15px box expecting
+  an `<svg>` child, because that app draws half-stars for a vendor average.
+  This app has whole stars only, `render_stars()` emits `★`/`☆`, and the CSS is
+  Book Tracker's two lines. Sizing a glyph with width/height happened to look
+  right and wasn't.
+
+- **`.chips .chip` is the filled Book Tracker tag; `.filterbar .chip` is the
+  bordered Shirewatch filter.** Two components that share a name. A filter is a
+  48px-ish tappable control and earns its size; a genre on a detail screen is a
+  label, and giving it the bordered form made it look like a button that does
+  nothing.
+
+- **`.poster-title` clamps to two lines.** Without it a long title sets its own
+  height and drags the whole grid row with it — "Everything Everywhere All at
+  Once and Then Some More Besides" ran to six lines and pushed the tiles beside
+  it out of rhythm.
 
 - **The public page is its own file with its own `<head>`.** It deliberately
   does not use `lib/layout.php`, because `page_foot()` renders the tab bar and
@@ -135,8 +168,8 @@ in your report.** Two are outstanding right now:
 ## Testing
 
 ```bash
-php tools/run-tests.php        # 114 assertions: schema, repo, reminders, mailer
-php tools/smoke-screens.php    # 49: renders every screen, checks the public page
+php tools/run-tests.php        # 140: schema, repo, sections, reminders, mailer
+php tools/smoke-screens.php    # 57: renders every screen, checks the public page
 ```
 
 Both run offline against an in-memory SQLite translation of `schema.sql`
@@ -146,9 +179,15 @@ Both run offline against an in-memory SQLite translation of `schema.sql`
 `smoke-screens.php` uses the real bootstrap and therefore needs one. That's why
 they're two entry points — the reasoning is in each file's header.
 
-**Neither proves anything about MySQL, TMDB reachability, or SMTP from the
-deployment host.** `tools/hosting-check.php` answers the last two, and it has
-to be run *on Hostinger*.
+**Neither proves anything about TMDB reachability or SMTP from the deployment
+host.** `tools/hosting-check.php` answers both, and it has to be run *on
+Hostinger*.
+
+The schema itself *has* been verified against a real MariaDB 10.11: it loads
+clean and its constraints bite (rating 0 and 6 rejected, unknown status
+rejected, duplicate `tmdb_id` rejected while many NULLs are fine, and a
+duplicate ledger key rejected — the double-send guarantee holding on the
+database this deploys to).
 
 ## Out of scope for v1
 

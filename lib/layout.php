@@ -33,13 +33,14 @@ const APP_NAME = 'Movies';
 /**
  * The bottom tab bar. Keys are the $tab values page_head()/page_foot() accept.
  *
- * THREE TABS, AND THE WHOLE STRUCTURE IS THIS ONE FUNCTION. Changing it later
- * is deliberately cheap — the tab bar is the only thing that knows how many
- * there are, and nothing else in the app enumerates them.
+ * TWO TABS, AND THE WHOLE STRUCTURE IS THIS ONE FUNCTION. Changing it is
+ * deliberately cheap — the tab bar is the only thing that knows how many there
+ * are, and nothing else in the app enumerates them. It was three; Coming Soon
+ * and To Watch turned out to be one question with two sections rather than two
+ * destinations, so they are one screen now (public/watchlist.php).
  *
  * Watched is leftmost because it is the tab opened most and the thumb reaches
- * that corner. Coming Soon is the one with a clock on it. To Watch is the
- * reference list you go to on purpose, when choosing something for tonight.
+ * that corner.
  *
  * movie.php, add.php and edit.php are NOT here. They are detail and action
  * screens pushed from a tab and mark whichever tab they came from active —
@@ -49,9 +50,8 @@ const APP_NAME = 'Movies';
 function nav_tabs(): array
 {
     return array(
-        'watched'     => array('label' => 'Watched',     'href' => 'index.php'),
-        'coming-soon' => array('label' => 'Coming Soon', 'href' => 'coming-soon.php'),
-        'watchlist'   => array('label' => 'To Watch',    'href' => 'watchlist.php'),
+        'watched'   => array('label' => 'Watched',  'href' => 'index.php'),
+        'watchlist' => array('label' => 'To Watch', 'href' => 'watchlist.php'),
     );
 }
 

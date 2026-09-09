@@ -144,16 +144,43 @@ s_ok(!str_contains($html, 'The Room'), 'and drops a one-star one');
 $html = render_screen('index.php', array('f' => 'nonsense-from-a-stale-bookmark'));
 s_ok(str_contains($html, 'Arrival'), 'an unknown filter shows the collection rather than erroring');
 
-$html = render_screen('coming-soon.php');
-s_ok(!str_contains($html, '<<BROKE>>'), 'coming-soon.php renders');
-s_ok(str_contains($html, 'Dune: Part Three'), 'coming-soon.php lists an upcoming movie');
-s_ok(str_contains($html, 'Date TBA'), 'an undated film reads "Date TBA", not a fake date');
-s_ok(str_contains($html, 'Tomorrow'), 'a film out tomorrow says so');
-s_ok(str_contains($html, 'is-out'), 'an already-released film is marked as out');
-
+/* ONE SCREEN, TWO SECTIONS. Coming Soon and To Watch were merged; both
+ * sections and the ordering between them are asserted here. */
 $html = render_screen('watchlist.php');
 s_ok(!str_contains($html, '<<BROKE>>'), 'watchlist.php renders');
-s_ok(str_contains($html, 'Past Lives'), 'watchlist.php lists a to-watch movie');
+s_ok(str_contains($html, 'Coming Soon'), 'it has a Coming Soon section');
+s_ok(str_contains($html, 'Out now'), 'and an Out now section');
+s_ok(str_contains($html, 'Dune: Part Three'), 'the upcoming film is listed');
+s_ok(str_contains($html, 'Past Lives'), 'and so is the to-watch one');
+
+/* Coming Soon FIRST. The half with a deadline attached goes on top. */
+s_ok(strpos($html, 'Dune: Part Three') < strpos($html, 'Past Lives'),
+    'Coming Soon is rendered above Out now');
+
+s_ok(str_contains($html, 'Date TBA'), 'an undated film reads "Date TBA", not a fake date');
+s_ok(str_contains($html, 'Tomorrow'), 'a film out tomorrow says so');
+s_ok(str_contains($html, 'is-out'), 'a just-released film is still marked as out');
+
+/* The seed's "Out Last Week" is 6 days past release and the window is 45, so
+ * it is still in theatres and still in Coming Soon. */
+s_ok(str_contains($html, 'Out Last Week'), 'a film still in theatres stays in Coming Soon');
+
+/* THE AUTO-MOVE. Nothing in the seed is past the theatrical window, so this
+ * asserts the rule directly rather than hoping the fixture drifts into it. */
+$html2 = render_screen('watchlist.php', array('__advance_days' => 60));
+s_ok(!str_contains($html2, '<<BROKE>>'), 'watchlist renders 60 days later');
+s_ok(strpos($html2, 'Out Last Week') > strpos($html2, 'Out now'),
+    'and a film out of theatres has moved itself into Out now');
+
+/* The old URL still resolves rather than 404ing. */
+$html = render_screen('coming-soon.php');
+s_ok(!str_contains($html, '<<BROKE>>'), 'the old coming-soon.php URL still responds');
+
+/* Two tabs now, not three. */
+$html = render_screen('index.php');
+s_ok(substr_count($html, '<a href="index.php"') + substr_count($html, '<a href="watchlist.php"') >= 2,
+    'the tab bar has both tabs');
+s_ok(!str_contains($html, '>Coming Soon</a>'), 'and no Coming Soon tab');
 
 /* The detail screen, once per section, because each takes a different branch.
  *

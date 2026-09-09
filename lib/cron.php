@@ -74,14 +74,15 @@ require_once __DIR__ . '/mailer.php';
  *
  * @param string $today   Y-m-d, from ONE movies_today() at the entry point.
  * @param bool   $dryRun  Report what would be sent, touch nothing.
- * @return array{today:string, due:int, sent:int, skipped:int, moved:int, failed:int, capped:int, errors:array<int,string>}
+ * @return array{today:string, resettled:int, due:int, sent:int, skipped:int, moved:int, failed:int, capped:int, errors:array<int,string>}
  */
 function cron_reminders_run(string $today, bool $dryRun = false): array
 {
     $cap = max(1, (int) cfg('reminders.max_per_run', 20));
 
     $tally = array(
-        'today'   => $today,
+        'today'     => $today,
+        'resettled' => 0,
         'due'     => 0,
         'sent'    => 0,
         'skipped' => 0,
@@ -90,6 +91,16 @@ function cron_reminders_run(string $today, bool $dryRun = false): array
         'capped'  => 0,
         'errors'  => array(),
     );
+
+    /* FIRST, move anything that has left theatres into the To Watch section.
+     *
+     * Before the due query, not after: a film that left theatres overnight is
+     * no longer coming soon, and reminders_due() filters on status — so doing
+     * this second would let a stale row produce an email about a film that is
+     * no longer on that list. The screen calls this too, so the app is correct
+     * even where the cron was never set up; this is the mechanism that makes it
+     * happen without anybody opening a page. */
+    $tally['resettled'] = movies_resettle($today);
 
     $due = reminders_due($today);
     $tally['due'] = count($due);
@@ -202,9 +213,10 @@ function cron_reminders_run(string $today, bool $dryRun = false): array
 function cron_reminders_summary(array $tally, bool $dryRun = false): string
 {
     return sprintf(
-        'cron-reminders %s:%s %d due, %d sent, %d already sent, %d skipped (date moved), %d failed, %d over cap',
+        'cron-reminders %s:%s %d moved out of theatres, %d due, %d sent, %d already sent, %d skipped (date moved), %d failed, %d over cap',
         $tally['today'],
         $dryRun ? ' [DRY RUN]' : '',
+        $tally['resettled'],
         $tally['due'],
         $tally['sent'],
         $tally['skipped'],

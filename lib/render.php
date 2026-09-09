@@ -154,7 +154,11 @@ function render_movie_grid(
     string $emptyText = 'Nothing here yet.'
 ): string {
     if (!$movies) {
-        return '<p class="empty">' . h($emptyText) . '</p>';
+        /* An empty string means "say nothing at all", not "render an empty
+         * box". The watchlist has two sections and only one of them should
+         * carry the empty state — a blank .empty paragraph under a populated
+         * Coming Soon list is a gap nobody can explain. */
+        return $emptyText === '' ? '' : '<p class="empty">' . h($emptyText) . '</p>';
     }
 
     $out = '<div class="poster-grid">';

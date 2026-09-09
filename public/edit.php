@@ -212,7 +212,9 @@ $title = (string) val($movie, $tmdbFetch, 'title', (string) ($_GET['title'] ?? '
 $heading = $isNew ? 'Add a movie' : 'Edit';
 
 $tab = match ($to) {
-    'coming_soon' => 'coming-soon',
+    /* Both unwatched sections live on watchlist.php now, so they light the
+     * same tab. */
+    'coming_soon' => 'watchlist',
     'to_watch'    => 'watchlist',
     default       => 'watched',
 };

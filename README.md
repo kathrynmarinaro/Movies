@@ -1,9 +1,9 @@
 # Movies
 
-A personal, mobile-first movie log. Three lists — what you've **watched** (with
-ratings), what's **coming soon** (with email reminders before it opens), and
-what you mean **to watch** — plus a public, read-only page showing only the
-watched collection.
+A personal, mobile-first movie log. Two screens: what you've **watched** (with
+ratings), and what you haven't — **Coming Soon** and **Out now**, two sections
+of one list, with email reminders before a film opens. Plus a public,
+read-only page showing only the watched collection.
 
 Single user. PHP 8.4 + MySQL on Hostinger. No build step — the deployed app is
 plain files.
@@ -39,8 +39,8 @@ php tools/seed.php --reset
 ```bash
 php -S 127.0.0.1:8790 -t public     # dev server
 php tools/seed.php --reset          # 20 movies, chosen to break layouts
-php tools/run-tests.php             # 114 assertions, offline
-php tools/smoke-screens.php         # 49 assertions, renders every screen
+php tools/run-tests.php             # 140 assertions, offline
+php tools/smoke-screens.php         # 57 assertions, renders every screen
 php tools/cron-reminders.php --dry-run --today=2026-09-16
 ```
 
@@ -71,6 +71,31 @@ path still works and every movie is entered by hand.
 Use the **API Read Access Token** (the long `eyJ...` one), not the 32-character
 v3 API key. The v3 key produces a 401 whose body says "Invalid API key", which
 reads like a wrong key rather than the wrong *kind* of key.
+
+## Coming Soon and Out now
+
+The To Watch tab has two sections, and **which one a film is in is not a
+choice** — it is a fact about the calendar:
+
+| | |
+|---|---|
+| not out yet, or still in theatres | **Coming Soon**, soonest first |
+| out of theatres | **Out now** |
+
+`movie_section()` in `lib/repo.php` is the only thing allowed to decide it, and
+it runs both on save and as a daily sweep — a film changes section because a
+day passed, and nothing in a database notices that on its own. The add flow
+therefore never asks which list you meant.
+
+**"Out of theatres" is an assumption.** TMDB has no end-of-run date, only a
+release date, so it is approximated as release + `theatrical_window_days`
+(config, default 45 — roughly the current studio window before streaming).
+Change it and everything re-settles on the next sweep. Two things are never
+moved by a date: a **watched** film, and one with **no release date** —
+unknown is not the same as out.
+
+A film that came out last week stays in Coming Soon and says "Out 6 days ago"
+in red. It is still in theatres, and that is the row most worth acting on.
 
 ## Reminders
 

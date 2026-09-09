@@ -28,14 +28,15 @@ if (!in_array($to, MOVIE_STATUSES, true)) {
     $to = 'watched';
 }
 
-$label = match ($to) {
-    'coming_soon' => 'Add to Coming Soon',
-    'to_watch'    => 'Add to To Watch',
-    default       => 'Add a watched movie',
-};
+/* No "Add to Coming Soon" any more: which of the two unwatched sections a
+ * movie lands in is decided from its release date by movie_section(), not
+ * chosen here. One heading for both. */
+$label = $to === 'watched' ? 'Add a watched movie' : 'Add to your list';
 
 $tab = match ($to) {
-    'coming_soon' => 'coming-soon',
+    /* Both unwatched sections live on watchlist.php now, so they light the
+     * same tab. */
+    'coming_soon' => 'watchlist',
     'to_watch'    => 'watchlist',
     default       => 'watched',
 };

@@ -32,7 +32,7 @@ reasoning behind the decisions is in `CLAUDE.md`.
 | Data | `lib/repo.php` |
 | Metadata | `lib/tmdb.php`, `lib/posters.php`, `public/api/search.php` |
 | Reminders | `lib/reminders.php`, `lib/mailer.php`, `lib/cron.php`, `tools/cron-reminders.php`, `public/cron.php` |
-| Screens | `public/index.php`, `coming-soon.php`, `watchlist.php`, `movie.php`, `add.php`, `edit.php`, `login.php`, `logout.php` |
+| Screens | `public/index.php`, `watchlist.php` (Coming Soon + Out now), `movie.php`, `add.php`, `edit.php`, `login.php`, `logout.php`. `coming-soon.php` is a 301 to `watchlist.php` |
 | **Public** | `public/collection.php` — see §6 |
 | Browser | `public/assets/{api,menu,tagfield,chrome,addflow}.js` |
 
@@ -46,9 +46,12 @@ reasoning behind the decisions is in `CLAUDE.md`.
 
 **Ten things that will bite you:**
 
-1. **One table, three sections.** `watched`, `coming_soon`, `to_watch`. Every
-   transition is one `UPDATE` via `movie_set_status()`. There are no separate
-   entry tables — see `CLAUDE.md`.
+1. **One table, three statuses, two screens.** `watched`, `coming_soon`,
+   `to_watch`. Every transition is one `UPDATE`. There are no separate entry
+   tables — see `CLAUDE.md`. `coming_soon` and `to_watch` are two SECTIONS of
+   `watchlist.php`, and **`movie_section()` is the only thing allowed to decide
+   which** — it is a function of `release_date`, not a stored choice.
+   `movies_resettle()` applies it daily.
 2. **The rating scale is 1–5, and `NULL` means UNRATED.** Zero is not legal;
    the `CHECK` rejects it. An unrated movie renders *nothing* — no stars.
    Every form must express "no rating" distinctly from any starred value.
@@ -88,6 +91,9 @@ reasoning behind the decisions is in `CLAUDE.md`.
 | **`movies_today()`** | `dates.php` | **the only function that asks what day it is** |
 | `days_until($date, $today)` | `dates.php` | signed day count |
 | `heads_up_date($release, $lead)` | `dates.php` | **the only thing allowed to compute a reminder date** |
+| `movie_section($status, $release, $today)` | `repo.php` | **the only thing allowed to decide Coming Soon vs To Watch** |
+| `movies_resettle($today)` | `repo.php` | applies it to every stored row; returns how many moved |
+| `theatrical_window_days()` | `repo.php` | the config read, in one place |
 | `fmt_countdown($release, $today)` | `dates.php` | "In 6 days" / "Out today" / "Date TBA" |
 | `movies_watched($filters)` / `movies_coming_soon()` / `movies_to_watch()` / `movie_get($id)` / `movie_by_tmdb_id($id)` | `repo.php` | reads, genres attached |
 | `movie_save($fields, $id, $today)` / `movie_set_status()` / `movie_delete()` | `repo.php` | writes |
@@ -161,9 +167,20 @@ New in this app:
 | `.poster-none` | no-poster placeholder; **carries the title** |
 | `.poster-title` / `.poster-sub` | title and the line under it |
 | `.poster-countdown` (+ `.is-out`) | the Coming Soon countdown |
+| `.fav` | the favourite heart — `--heart`, deliberately NOT the accent |
 | `.wrap-public` / `.public-head` / `.public-sub` | the public page only |
 | `.providers` / `.provider` | streaming availability |
 | `.results` / `.result` / `.result-new` | the add flow's search list |
+
+**Two chips, one name.** `.chips .chip` is Book Tracker's filled tag — a
+read-only label, small, no border. `.filterbar .chip` is Shirewatch's bordered
+32px filter — a control, and it earns the size. Don't merge them.
+
+**Stars are glyphs.** `render_stars()` emits `★`/`☆`; `.star` is coloured text,
+not a sized box. This app has no half-stars.
+
+**`.poster-title` clamps to two lines** and `.poster-sub` to one. Without the
+clamp a long title drags its whole grid row out of rhythm.
 
 **`.poster-*`, not `.card-*`, deliberately.** Shirewatch's `.card` is a
 bordered content block that three screens' worth of ported markup depends on.

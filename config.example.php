@@ -187,6 +187,26 @@ return array(
         'timeout' => 20,
     ),
 
+    /* ---- how long a film stays in theatres ---------------------------
+     * Coming Soon and To Watch are two SECTIONS of one screen, and which
+     * one a film is in is decided from its release date rather than
+     * chosen: still in theatres (or not out yet) puts it in Coming Soon,
+     * out of theatres moves it to To Watch. The daily cron re-settles
+     * every film, and the screen does too so it is never stale.
+     *
+     * THIS IS AN ASSUMPTION, NOT A FACT TMDB GIVES US. There is no
+     * end-of-run date in the API — only the release date — so "out of
+     * theatres" is approximated as release date + this many days. Around
+     * 45 is the current studio window before a film reaches streaming or
+     * PVOD, but it varies a lot: a small release can be gone in two
+     * weeks, a blockbuster can run for three months.
+     *
+     * Change it and every film re-settles on the next sweep. Nothing is
+     * baked into a query, and nothing is lost either way — a film in the
+     * wrong section is still one tap from the other one.
+     */
+    'theatrical_window_days' => 45,
+
     /* ---- reminders --------------------------------------------------
      * Read in ONE place each, so the cron and the screens cannot
      * disagree about them.
